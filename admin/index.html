@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Admin — AppCaptures</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Hanken+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0914;--surface:#161329;--line:#2a2450;--txt:#e5e2e3;--mut:#9aa3b8;--acc:#7c5cff}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--txt);font:14px/1.55 Inter,ui-sans-system,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line);padding:14px 0}
+header nav{display:flex;gap:16px;align-items:center}
+header a{color:var(--mut);font-weight:600;font-size:13px;text-decoration:none}
+header a.brand{color:#fff;font:800 16px "Hanken Grotesk",Inter,sans-serif}
+h1{font:800 28px "Hanken Grotesk",Inter,sans-serif;margin:28px 0 4px}
+.sub{color:var(--mut);margin:0 0 20px}
+.gate{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:420px;margin:24px 0}
+.gate input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:9px;font:600 14px Inter,sans-serif}
+.warn{font-size:12px;color:var(--mut);border:1px dashed var(--line);border-radius:10px;padding:9px 12px;margin-top:12px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0}
+.panel h2{margin:0 0 10px;font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);word-break:break-all}
+.btn{appearance:none;border:1px solid var(--acc);background:var(--acc);color:#fff;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--txt)}
+.btn.danger{background:transparent;border-color:#7f2d3a;color:#ff9aa5}
+textarea{width:100%;min-height:130px;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;font:12.5px/1.5 ui-monospace,monospace}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.err{color:#ff9aa5;font-size:13px;font-weight:600}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<header><div class="wrap"><nav><a class="brand" href="/">AppCaptures · Admin</a><a href="/news/">News</a><a href="/changelog/">Changelog</a><a href="/app/">Studio</a></nav></div></header>
+<main class="wrap">
+<h1>Super admin</h1>
+<p class="sub">Waitlist, news, and changelog — dogfood console. Same Ploonu treatment as every launch: landing, app, admin, news, changelog.</p>
+<div class="gate" id="gate">
+<label for="code" style="display:block;font-weight:700;margin-bottom:6px">Dogfood passcode</label>
+<input id="code" type="password" autocomplete="off" placeholder="ask ploonu" />
+<div class="row"><button class="btn" id="unlock">Unlock</button></div>
+<p class="warn">DOGFOOD GATE — this is a local passcode (<code>ploonu</code>), not real security. Production gets Cloudflare Access + D1; waitlist moves from this browser to <code>POST /api/waitlist</code>.</p>
+</div>
+<div id="console" hidden>
+<div class="panel"><h2>Waitlist — <span id="wlCount">0</span></h2>
+<table aria-label="Waitlist signups"><thead><tr><th>#</th><th>Email</th><th>At</th><th>Via</th><th></th></tr></thead><tbody id="wlBody"></tbody></table>
+<div class="row"><button class="btn ghost" id="csv">Export CSV</button><button class="btn danger" id="wipe">Clear local list</button></div>
+</div>
+<div class="panel"><h2>News editor</h2>
+<textarea id="newsEd" aria-label="News JSON"></textarea>
+<div class="row"><button class="btn" id="newsSave">Save news</button><button class="btn ghost" id="newsReset">Reset to file</button></div>
+<p class="err" id="newsErr" role="alert"></p>
+</div>
+<div class="panel"><h2>Changelog editor</h2>
+<textarea id="clEd" aria-label="Changelog JSON"></textarea>
+<div class="row"><button class="btn" id="clSave">Save changelog</button><button class="btn ghost" id="clReset">Reset to file</button></div>
+<p class="err" id="clErr" role="alert"></p>
+</div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+if(localStorage.getItem("appcaptures_admin")==="1"){ show(); }
+$("unlock").addEventListener("click",()=>{
+  if($("code").value==="ploonu"){ localStorage.setItem("appcaptures_admin","1"); show(); }
+  else $("code").focus();
+});
+$("code").addEventListener("keydown",e=>{ if(e.key==="Enter") $("unlock").click(); });
+function show(){ $("gate").hidden=true; $("console").hidden=false; loadWL(); loadEd("news"); loadEd("changelog"); }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function loadWL(){
+  const cur=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]");
+  $("wlCount").textContent=cur.length;
+  $("wlBody").innerHTML=cur.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.email)}</td><td>${esc((x.at||"").slice(0,10))}</td><td>${esc(x.via||"")}</td><td><button class="btn danger" data-i="${i}">✕</button></td></tr>`).join("")||'<tr><td colspan="5" style="color:var(--mut)">Empty — join from the landing page.</td></tr>';
+  $("wlBody").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+    const c=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]"); c.splice(+b.dataset.i,1);
+    localStorage.setItem("appcaptures_waitlist",JSON.stringify(c)); loadWL();
+  }));
+}
+$("csv").addEventListener("click",()=>{
+  const cur=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]");
+  const csv="email,at,via\n"+cur.map(x=>`${x.email},${x.at||""},${x.via||""}`).join("\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="appcaptures-waitlist.csv"; a.click();
+});
+$("wipe").addEventListener("click",()=>{ if(confirm("Clear the local waitlist?")){ localStorage.removeItem("appcaptures_waitlist"); loadWL(); } });
+async function loadEd(which){
+  const key=which==="news"?"appcaptures_news_override":"appcaptures_changelog_override";
+  const ov=localStorage.getItem(key);
+  if(ov){ $(which==="news"?"newsEd":"clEd").value=JSON.stringify(JSON.parse(ov),null,2); return; }
+  try{ const r=await fetch(`/data/${which}.json`); $(which==="news"?"newsEd":"clEd").value=JSON.stringify(await r.json(),null,2); }
+  catch(e){ $(which==="news"?"newsErr":"clErr").textContent="Couldn't load file — paste JSON manually."; }
+}
+function saveEd(which){
+  const id=which==="news"?"newsEd":"clEd", err=$(which==="news"?"newsErr":"clErr");
+  const key=which==="news"?"appcaptures_news_override":"appcaptures_changelog_override";
+  try{ const j=JSON.parse($(id).value); if(!Array.isArray(j.items)) throw 0; localStorage.setItem(key,JSON.stringify(j)); err.textContent=""; }
+  catch(e){ err.textContent="Invalid JSON — need {\"items\": [...]}."; }
+}
+$("newsSave").addEventListener("click",()=>saveEd("news"));
+$("clSave").addEventListener("click",()=>saveEd("changelog"));
+$("newsReset").addEventListener("click",()=>{ localStorage.removeItem("appcaptures_news_override"); loadEd("news"); });
+$("clReset").addEventListener("click",()=>{ localStorage.removeItem("appcaptures_changelog_override"); loadEd("changelog"); });
+</script>
+</body>
+</html>
