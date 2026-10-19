@@ -178,15 +178,18 @@ function wireWaitlist(id){
     const email=f.email.value.trim();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ f.email.focus(); return; }
     const entry={email,at:new Date().toISOString(),via:id};
+    let serverPos=null;
     try{
       const r=await fetch("/api/waitlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry)});
       if(!r.ok) throw 0;
-    }catch(err){ /* TODO(API): D1-backed POST /api/waitlist; local fallback below keeps dogfood working */ }
+      const b=await r.json().catch(()=>null);
+      if(b&&typeof b.position==="number") serverPos=b.position;
+    }catch(err){ /* no DB yet (503) or offline: local fallback below keeps dogfood working */ }
     try{
       const k="appcaptures_waitlist", cur=JSON.parse(localStorage.getItem(k)||"[]");
       if(!cur.some(x=>x.email===email)) cur.push(entry);
       localStorage.setItem(k,JSON.stringify(cur));
-      const n=cur.findIndex(x=>x.email===email)+1;
+      const n=serverPos??(cur.findIndex(x=>x.email===email)+1);
       f.outerHTML=`<p class="okmsg" role="status">You're #${n} in line. We'll mail launch + major templates only.</p>`;
     }catch(err){ f.outerHTML=`<p class="okmsg" role="status">You're on the list. We'll be in touch.</p>`; }
   });

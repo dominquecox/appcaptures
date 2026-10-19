@@ -48,7 +48,7 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 - Live `curl -s https://appcaptures.ploonu.workers.dev/` → `200`, title → `1`, `Headline — per app` → `1` — permanent, verified.
 
 ## 8b. Landing + waitlist (`feat/landing-waitlist`, unmerged)
-Public face while the studio dogfoods locally: `/` landing (TypePress treatment — ice/navy/orange, hero, email capture ×2, features, how-it-works, news/changelog previews, waitlist band), studio moved untouched to `/app/`, `/news/` + `/changelog/` render `data/*.json`, `/admin/` super admin console (dogfood passcode `ploonu`, waitlist table + CSV, JSON editors → localStorage overrides). Waitlist tries `POST /api/waitlist`, falls back to `localStorage:appcaptures_waitlist`. Plan: `docs/plans/2026-10-19-landing-waitlist.md`.
+Public face while the studio dogfoods locally: `/` landing (TypePress treatment — ice/navy/orange, hero, email capture ×2, features, how-it-works, news/changelog previews, waitlist band), studio moved untouched to `/app/`, `/news/` + `/changelog/` render `data/*.json`, `/admin/` super admin console (dogfood passcode `ploonu`, waitlist table + CSV, JSON editors → localStorage overrides). Waitlist `POST /api/waitlist` → D1 via `worker.js` + `schema.sql` (server position wins when present; falls back to `localStorage:appcaptures_waitlist` while `env.DB` is unbound). Mini-side: `wrangler d1 create appcaptures_db` → paste `[[d1_databases]]` block → `wrangler d1 execute appcaptures_db --file schema.sql` → deploy. Plan: `docs/plans/2026-10-19-landing-waitlist.md`.
 
 ## 8. How any engineer continues
 - Branch: `feat/screenshots-saas` from `vidiloopios` main
