@@ -1,15 +1,25 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "appcaptures",
-  "main": "worker.js",
-  "compatibility_date": "2026-10-19",
-  "compatibility_flags": [],
-  "assets": {
-    "directory": ".",
-    "not_found_handling": "single-page-application"
-  },
-  "observability": {
-    "enabled": true,
-    "traces": { "enabled": true }
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "appcaptures",
+	"main": "worker.js",
+	"compatibility_date": "2026-10-19",
+	"compatibility_flags": [],
+	"assets": {
+		"directory": ".",
+		"not_found_handling": "single-page-application"
+	},
+	"observability": {
+		"enabled": true,
+		"traces": {
+			"enabled": true
+		}
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "appcaptures_db",
+			"database_id": "28e9e076-f0ff-44d0-a272-046db1819fc1",
+			"remote": true
+		}
+	]
 }
