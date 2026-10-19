@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AppCaptures — App Store Screenshot Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Hanken+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+:root{--primary:#7c5cff;--primary-2:#603ce2;--bg:#0b0914;--surface:#161329;--line:#211c3d;--on-surface:#e5e2e3}
+html,body{margin:0;background:var(--bg);color:#0f172a;font:13px/1.5 Inter,ui-sans-system,-apple-system,sans-serif}
+a{color:var(--primary)}
+.header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.header h1{margin:0;font-size:14px;font-weight:800;letter-spacing:-0.02em;color:#fff;line-height:1}
+.header h1 span{font-weight:600;color:#9aa3b8}
+.header .sub{color:#9aa3b8;font-size:11px;margin-top:3px;line-height:1.4}
+.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.btn{appearance:none;border:1px solid #2a2450;background:#161329;color:#e5e7eb;padding:8px 11px;border-radius:9px;font-weight:700;font-size:12px;cursor:pointer}
+.btn:hover{border-color:#3a2f6a}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-2)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.badge{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#cabeff;background:#1a1633;border:1px solid #2a2450;padding:4px 8px;border-radius:999px}
+.select{appearance:none;background:#161329;border:1px solid #2a2450;color:#e5e7eb;padding:7px 26px 7px 10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer}
+.select:focus{outline:none;border-color:var(--primary)}
+.wrap-select{position:relative;display:inline-flex;align-items:center}
+.wrap-select::after{content:"▾";position:absolute;right:9px;color:#9aa3b8;pointer-events:none;font-size:10px}
+.layout{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 62px)}
+@media(max-width:980px){.layout{grid-template-columns:1fr}}
+.left{background:#0e0e0f;border-right:1px solid var(--line);padding:12px;overflow:auto}
+.panel{background:#161329;border:1px solid #2a2450;border-radius:12px;padding:10px;margin-bottom:10px}
+.panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#9aa3b8}
+.row{display:flex;gap:6px;align-items:center}
+.row > *{flex:1}
+.input, .select-full{width:100%;background:var(--bg);border:1px solid #2a2450;color:#e5e7eb;padding:7px 9px;border-radius:8px;font-size:12px;font-weight:600}
+.input:focus, .select-full:focus{outline:none;border-color:var(--primary)}
+.input-color{width:36px;height:30px;padding:2px;background:var(--bg);border:1px solid #2a2450;border-radius:8px}
+.label{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#9aa3b8;font-weight:700;display:block;margin-bottom:4px}
+.card-editor{background:#161329;border:1px solid #2a2450;border-radius:12px;padding:9px;margin-bottom:8px}
+.card-editor.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(124,92,255,.18)}
+.card-editor .mini{font-size:11px;padding:6px 8px;border-radius:8px;border:1px solid #2a2450;background:var(--bg);color:#cbd5e1;cursor:pointer;font-weight:700}
+.card-editor .mini:hover{border-color:var(--primary);color:#fff}
+.preview-area{background:#000;padding:14px 14px 22px;overflow:auto}
+.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.preview-head h2{margin:0;color:#e5e7eb;font-size:12px;font-weight:800;letter-spacing:-0.01em}
+.preview-head p{margin:0;color:#64748b;font-size:11px}
+.sizes{display:flex;gap:5px;flex-wrap:wrap}
+.size-btn{font-size:10px;padding:5px 9px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#9aa3b8;cursor:pointer;font-weight:700}
+.size-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.strip{display:flex;gap:12px;overflow:auto;padding:8px 4px 12px;scroll-snap-type:x mandatory}
+.screen-wrap{flex:0 0 auto;scroll-snap-align:start;display:flex;flex-direction:column;gap:6px;align-items:center}
+.screen-wrap .lab{font-size:10px;color:#64748b;font-weight:700;letter-spacing:.02em;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen-frame{width:190px;height:412px;background:#fff;border-radius:16px;overflow:hidden;position:relative;box-shadow:0 8px 28px rgba(0,0,0,.45);border:3px solid rgba(124,92,255,.28);cursor:pointer}
+.screen-frame.selected{border-color:var(--primary);box-shadow:0 0 0 3px rgba(124,92,255,.34), 0 8px 28px rgba(0,0,0,.45)}
+.screen-frame canvas{width:100%;height:100%;display:block}
+.export-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.note{color:#64748b;font-size:10.5px;line-height:1.5;margin-top:10px;border:1px solid var(--line);background:#0e0e0f;padding:9px 10px;border-radius:10px}
+.pill{font-size:10px;padding:4px 8px;border-radius:999px;background:#161329;border:1px solid #2a2450;color:#9aa3b8}
+.screen-frame .zoom{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:999px;border:1px solid #2a2450;background:rgba(11,9,20,.72);color:#e5e7eb;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
+.screen-wrap .screen-frame:hover .zoom,.screen-frame:focus-within .zoom{opacity:1}
+@media (hover:none){.screen-frame .zoom{opacity:1}}
+.screen-frame .zoom svg{width:14px;height:14px}
+button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+#lightbox{position:fixed;inset:0;z-index:60}
+#lightbox[hidden]{display:none}
+.lb-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.84)}
+.lb-figure{position:absolute;inset:0;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px}
+#lbCanvas{max-width:min(92vw,560px);max-height:76vh;width:auto;height:auto;background:#fff;border-radius:18px;border:3px solid rgba(124,92,255,.4)}
+.lb-cap{display:flex;gap:8px;align-items:center;color:#e5e7eb;font-size:12px;font-weight:700}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#fff;font-size:18px;line-height:1;cursor:pointer}
+#lbPrev{left:14px}#lbNext{right:14px}
+#lbClose{position:absolute;top:14px;right:14px;min-width:34px;height:30px;border-radius:9px;border:1px solid #2a2450;background:#161329;color:#fff;cursor:pointer;font-size:13px}
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="min-width:240px">
+    <h1>AppCaptures <span>— App Screenshots Studio</span></h1>
+    <div class="sub">Muse layout, any app. iOS / Android / RN. White card + brand border. Exports at exact store sizes. No Canva.</div>
+  </div>
+  <div class="controls">
+    <div class="wrap-select"><select id="appSelect" class="select">
+      <option value="vidiloop">Vidiloop — #7c5cff</option>
+      <option value="yaps">Yaps — #ff6b00</option>
+      <option value="typepress">TypePress — #0ea5e9</option>
+      <option value="generic">Generic — #2563eb</option>
+      <option value="custom">Custom…</option>
+    </select></div>
+    <div class="wrap-select"><select id="platformSelect" class="select">
+      <option value="ios">iOS App Store</option>
+      <option value="android">Google Play</option>
+      <option value="both">Both</option>
+    </select></div>
+    <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
+    <button class="btn" id="btnSave">Save</button>
+    <button class="btn primary" id="btnExportAll">Export all</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="left">
+    <div class="panel" id="brandPanel">
+      <h3>Brand — per app</h3>
+      <label class="label">App name</label>
+      <input id="brandName" class="input" value="Vidiloop" maxlength="30" />
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label class="label">Primary</label>
+          <div class="row" style="gap:6px"><input id="brandPrimary" type="color" class="input-color" value="#7c5cff"><input id="brandPrimaryText" class="input" value="#7c5cff" style="flex:1"></div>
+        </div>
+        <div>
+          <label class="label">Page bg</label>
+          <div class="row" style="gap:6px"><input id="brandBg" type="color" class="input-color" value="#0b0914"><input id="brandBgText" class="input" value="#0b0914" style="flex:1"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label class="label">Headline font</label><select id="brandFont" class="select-full"><option value="Inter">Inter</option><option value="Hanken Grotesk">Hanken Grotesk</option></select></div>
+        <div><label class="label">Device frame</label><select id="deviceFrame" class="select-full"><option value="island">iOS Dynamic Island</option><option value="notch">Android notch</option><option value="minimal">Minimal (RN)</option></select></div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a2450">
+        <h3 style="margin:0 0 8px">Headline — per app</h3>
+        <div class="row" style="gap:8px">
+          <div>
+            <label class="label">Size <span id="headlineSizeVal" style="color:#e5e7eb;font-weight:800">50</span>px</label>
+            <input id="headlineSize" type="range" min="32" max="72" value="50" style="width:100%;accent-color:var(--primary)">
+          </div>
+          <div>
+            <label class="label">Weight</label>
+            <select id="headlineWeight" class="select-full"><option value="500">500</option><option value="600">600</option><option value="700" selected>700</option><option value="800">800</option></select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;gap:8px">
+          <div>
+            <label class="label">Color</label>
+            <div class="row" style="gap:6px"><input id="headlineColor" type="color" class="input-color" value="#0f172a"><input id="headlineColorText" class="input" value="#0f172a" style="flex:1"></div>
+          </div>
+          <div>
+            <label class="label">Align</label>
+            <select id="headlineAlign" class="select-full"><option value="center">Center</option><option value="left">Left</option></select>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn ghost" id="btnResetBrand" style="flex:1">Reset brand</button>
+        <button class="btn" id="btnAddScreen" style="flex:1">+ Add screen</button>
+      </div>
+    </div>
+    <div id="leftPanel"></div>
+  </div>
+  <div class="preview-area">
+    <div class="preview-head">
+      <div>
+        <h2 id="previewTitle">Preview — Vidiloop · iOS</h2>
+        <p id="previewSub">Black #0b0914 page · white cards with violet stroke. Tap a card to edit. 1–10 screens.</p>
+      </div>
+      <div class="sizes" id="sizeBtns"></div>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div id="lightbox" hidden>
+      <div class="lb-backdrop" data-k="lbclose"></div>
+      <figure class="lb-figure" role="dialog" aria-modal="true" aria-label="Enlarged screenshot preview">
+        <canvas id="lbCanvas"></canvas>
+        <figcaption class="lb-cap"><span id="lbCap"></span><span class="pill" id="lbSize"></span></figcaption>
+        <button class="lb-nav" id="lbPrev" aria-label="Previous screen">‹</button>
+        <button class="lb-nav" id="lbNext" aria-label="Next screen">›</button>
+        <button id="lbClose" aria-label="Close enlarged view">✕</button>
+      </figure>
+    </div>
+    <div class="export-row">
+      <button class="btn primary" id="btnExportAll2">Export all</button>
+      <button class="btn" id="btnExportSelected">Export selected</button>
+      <button class="btn" id="btnEnlarge">Enlarge selected</button>
+      <button class="btn" id="btnExportOther">Export other platform</button>
+      <span class="pill" id="countPill">8 screens</span>
+    </div>
+    <div class="note">
+      <b style="color:#e5e7eb">Agnostic Ploonu toggle:</b> Vidiloop (#7c5cff · #0b0914), <span style="color:#ff6b00">Yaps (#ff6b00 · #0d0b14)</span> from yaps.club, TypePress (#0ea5e9 · #0f172a), Generic or Custom. Switch apps — brand, headlines and samples swap instantly. Upload your own <span style="font-family:ui-monospace,monospace">screen.png</span> per slot. Exports PNG, RGB, no alpha.<br>
+      <b>Sizes:</b> iOS 1320×2868 (6.9"), 1290×2796, 1284×2778, 1206×2622, 2064×2752 iPad · Android 1080×1920, 1440×2560, 1080×2400
+    </div>
+  </div>
+</div>
+
+<script>
+const VIDILOOP_ASSETS = [
+  {label:"Feed — For You", path:"../../designassets/for_you_feed/screen.png"},
+  {label:"Capture — Camera", path:"../../designassets/capture_screen/screen.png"},
+  {label:"Editor — Trim", path:"../../designassets/video_editor/screen.png"},
+  {label:"Discovery — Search", path:"../../designassets/discovery_search/screen.png"},
+  {label:"Profile + Top 8", path:"../../designassets/profile_screen/screen.png"},
+  {label:"Top 8 — Edit / Reorder", path:"../../designassets/top_8_edit_reorder/screen.png"},
+  {label:"Notifications", path:"../../designassets/notifications/screen.png"},
+  {label:"Onboarding / Auth", path:"../../designassets/onboarding_auth/screen.png"},
+  {label:"Settings", path:"../../designassets/settings/screen.png"},
+  {label:"Post Preview", path:"../../designassets/post_preview_screen/screen.png"},
+  {label:"Upload Picker", path:"../../designassets/upload_picker/screen.png"},
+  {label:"Comments Sheet", path:"../../designassets/comments_sheet/screen.png"},
+  {label:"Age Verification", path:"../../designassets/age_verification/screen.png"},
+  {label:"Username Creation", path:"../../designassets/username_creation/screen.png"},
+];
+const PLATFORM_SIZES = {
+  ios: [
+    {value:"1320x2868", label:"1320×2868", note:"6.9\""},
+    {value:"1290x2796", label:"1290×2796", note:"6.7\""},
+    {value:"1284x2778", label:"1284×2778", note:"6.5\""},
+    {value:"1206x2622", label:"1206×2622", note:"6.1\""},
+    {value:"2064x2752", label:"2064×2752", note:"iPad 13\""},
+  ],
+  android: [
+    {value:"1080x1920", label:"1080×1920", note:"Phone"},
+    {value:"1440x2560", label:"1440×2560", note:"QHD"},
+    {value:"1080x2400", label:"1080×2400", note:"Modern"},
+    {value:"1440x3120", label:"1440×3120", note:"Tall"},
+  ]
+};
+const APP_PRESETS = {
+  vidiloop: {
+    id:"vidiloop", name:"Vidiloop", primary:"#7c5cff", bg:"#0b0914", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
+      {headline:"Welcome to Vidiloop", file:"../../designassets/onboarding_auth/screen.png", asset:7},
+      {headline:"Loop any moment", file:"../../designassets/for_you_feed/screen.png", asset:0},
+      {headline:"Capture in 8 seconds", file:"../../designassets/capture_screen/screen.png", asset:1},
+      {headline:"Trim in seconds", file:"../../designassets/video_editor/screen.png", asset:2},
+      {headline:"Build a Series", file:"../../designassets/post_preview_screen/screen.png", asset:9},
+      {headline:"Go further with Plus", file:"../../designassets/settings/screen.png", asset:8},
+      {headline:"Your Top 8 is showing", file:"../../designassets/profile_screen/screen.png", asset:4},
+      {headline:"Never miss a loop", file:"../../designassets/notifications/screen.png", asset:6},
+    ]
+  },
+  yaps: {
+    id:"yaps", name:"Yaps", primary:"#ff6b00", bg:"#0d0b14", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
+      {headline:"Speak your mind", file:"", asset:-1},
+      {headline:"Short posts, big opinions", file:"", asset:-1},
+      {headline:"Good conversation", file:"", asset:-1},
+      {headline:"Adults-only, free", file:"", asset:-1},
+      {headline:"Join the conversation", file:"", asset:-1},
+    ]
+  },
+  typepress: {
+    id:"typepress", name:"TypePress", primary:"#0ea5e9", bg:"#0f172a", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
+      {headline:"Write without limits", file:"", asset:-1},
+      {headline:"Publish in seconds", file:"", asset:-1},
+      {headline:"Own your audience", file:"", asset:-1},
+      {headline:"Themes that convert", file:"", asset:-1},
+      {headline:"Start writing today", file:"", asset:-1},
+    ]
+  },
+  generic: {
+    id:"generic", name:"Generic App", primary:"#2563eb", bg:"#0a0a0f", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
+      {headline:"Your app, your way", file:"", asset:-1},
+      {headline:"Design that converts", file:"", asset:-1},
+      {headline:"Built for speed", file:"", asset:-1},
+      {headline:"Stay in control", file:"", asset:-1},
+      {headline:"Get started today", file:"", asset:-1},
+    ]
+  }
+};
+let appId = "vidiloop";
+let screens = JSON.parse(JSON.stringify(APP_PRESETS.vidiloop.screens));
+let selected = 0;
+let platform = "ios";
+let exportSize = "1320x2868";
+let brand = {name:"Vidiloop", primary:"#7c5cff", bg:"#0b0914", font:"Hanken Grotesk", frame:"island", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center"};
+let appStates = {}; // agnostic per-app persistence
+
+function loadState(){
+  try{
+    // migrate v2 -> v3 agnostic per-app
+    const raw3 = localStorage.getItem("ploonu_screenshots_v3");
+    if(raw3){
+      const j = JSON.parse(raw3);
+      if(j.currentAppId) appId = j.currentAppId;
+      if(j.platform) platform = j.platform;
+      if(j.exportSize) exportSize = j.exportSize;
+      if(j.apps) appStates = j.apps;
+      const cur = appStates[appId];
+      if(cur){ brand = cur.brand; screens = cur.screens; }
+    } else {
+      const raw2 = localStorage.getItem("ploonu_screenshots_v2");
+      if(raw2){
+        const j = JSON.parse(raw2);
+        if(j.appId) appId = j.appId;
+        if(j.platform) platform = j.platform;
+        if(j.exportSize) exportSize = j.exportSize;
+        if(j.brand) brand = {...brand, ...j.brand};
+        if(j.screens) screens = j.screens;
+        // ensure headline fields exist
+        brand.headlineSize = brand.headlineSize || 50;
+        brand.headlineWeight = brand.headlineWeight || "700";
+        brand.headlineColor = brand.headlineColor || "#0f172a";
+        brand.headlineAlign = brand.headlineAlign || "center";
+        appStates[appId] = {brand: JSON.parse(JSON.stringify(brand)), screens: JSON.parse(JSON.stringify(screens))};
+      }
+      if(APP_PRESETS[appId]){
+        const p = APP_PRESETS[appId];
+        brand = {name:p.name, primary:p.primary, bg:p.bg, font:"Hanken Grotesk", frame:"island", headlineSize:p.headlineSize, headlineWeight:p.headlineWeight, headlineColor:p.headlineColor, headlineAlign:p.headlineAlign};
+        if(!screens.length) screens = JSON.parse(JSON.stringify(p.screens));
+        brand.headlineSize = brand.headlineSize || 50;
+        brand.headlineWeight = brand.headlineWeight || "700";
+        brand.headlineColor = brand.headlineColor || "#0f172a";
+        brand.headlineAlign = brand.headlineAlign || "center";
+      }
+    }
+  }catch(e){}
+  // ensure fields
+  brand.headlineSize = brand.headlineSize || 50;
+  brand.headlineWeight = brand.headlineWeight || "700";
+  brand.headlineColor = brand.headlineColor || "#0f172a";
+  brand.headlineAlign = brand.headlineAlign || "center";
+  if(!screens.length && APP_PRESETS[appId]) screens = JSON.parse(JSON.stringify(APP_PRESETS[appId].screens));
+}
+function saveState(){
+  // agnostic per-app: save current app into map, then persist map + current pointers to v3
+  appStates[appId] = {brand: JSON.parse(JSON.stringify(brand)), screens: JSON.parse(JSON.stringify(screens))};
+  localStorage.setItem("ploonu_screenshots_v3", JSON.stringify({currentAppId:appId, platform, exportSize, apps:appStates}));
+  // also keep v2 for backwards compat
+  localStorage.setItem("ploonu_screenshots_v2", JSON.stringify({appId, platform, exportSize, brand, screens}));
+}
+loadState();
+
+const appSelect = document.getElementById("appSelect");
+const platformSelect = document.getElementById("platformSelect");
+const brandName = document.getElementById("brandName");
+const brandPrimary = document.getElementById("brandPrimary");
+const brandPrimaryText = document.getElementById("brandPrimaryText");
+const brandBg = document.getElementById("brandBg");
+const brandBgText = document.getElementById("brandBgText");
+const brandFont = document.getElementById("brandFont");
+const deviceFrame = document.getElementById("deviceFrame");
+const leftPanel = document.getElementById("leftPanel");
+const strip = document.getElementById("strip");
+const sizeBtns = document.getElementById("sizeBtns");
+
+// init controls from brand
+function syncBrandUI(){
+  brandName.value = brand.name;
+  brandPrimary.value = brand.primary;
+  brandPrimaryText.value = brand.primary;
+  brandBg.value = brand.bg;
+  brandBgText.value = brand.bg;
+  brandFont.value = brand.font;
+  deviceFrame.value = brand.frame;
+  const hs = document.getElementById("headlineSize");
+  const hsv = document.getElementById("headlineSizeVal");
+  const hw = document.getElementById("headlineWeight");
+  const hc = document.getElementById("headlineColor");
+  const hct = document.getElementById("headlineColorText");
+  const ha = document.getElementById("headlineAlign");
+  if(hs){ hs.value = brand.headlineSize; hsv.textContent = brand.headlineSize; }
+  if(hw) hw.value = brand.headlineWeight;
+  if(hc) hc.value = brand.headlineColor;
+  if(hct) hct.value = brand.headlineColor;
+  if(ha) ha.value = brand.headlineAlign;
+  document.documentElement.style.setProperty("--primary", brand.primary);
+  document.documentElement.style.setProperty("--bg", brand.bg);
+  document.body.style.background = brand.bg;
+  document.querySelector(".header").style.background = brand.bg;
+  appSelect.value = appId;
+  platformSelect.value = platform;
+}
+syncBrandUI();
+
+function buildSizeBtns(){
+  const list = platform==="both" ? [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android] : PLATFORM_SIZES[platform];
+  // ensure exportSize valid
+  if(!list.find(s=>s.value===exportSize)) exportSize = list[0].value;
+  sizeBtns.innerHTML = list.map(s=>`<button class="size-btn ${s.value===exportSize?"active":""}" data-size="${s.value}">${s.label}</button>`).join("");
+  sizeBtns.querySelectorAll(".size-btn").forEach(b=>b.addEventListener("click",()=>{
+    exportSize=b.dataset.size;
+    syncSizeBadge();
+    renderStripOnly();
+    saveState();
+    buildSizeBtns();
+  }));
+  syncSizeBadge();
+  document.getElementById("previewTitle").textContent = `Preview — ${brand.name} · ${platform==="ios"?"iOS":platform==="android"?"Android":"iOS + Android"}`;
+}
+function syncSizeBadge(){
+  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android];
+  const f = all.find(s=>s.value===exportSize);
+  document.getElementById("sizeBadge").textContent = exportSize.replace("x"," × ") + (f?` · ${f.note}`:"");
+}
+buildSizeBtns();
+
+function buildLeft(){
+  leftPanel.innerHTML = "";
+  document.getElementById("countPill").textContent = `${screens.length} screen${screens.length===1?"":"s"}`;
+  screens.forEach((s,i)=>{
+    const div = document.createElement("div");
+    div.className = "card-editor" + (i===selected?" active":"");
+    const assetOptions = appId==="vidiloop" ? VIDILOOP_ASSETS : [{label:"Custom upload (no preset)", path:""}];
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="width:24px;height:24px;border-radius:999px;background:${i===selected?brand.primary:"#211c3d"};color:#fff;display:grid;place-items:center;font-weight:800;font-size:11px">${i+1}</span>
+        <span style="font-weight:800;font-size:12px;color:#e5e7eb">Screen ${i+1}</span>
+        <button class="mini" data-k="remove" data-i="${i}" style="margin-left:auto;padding:3px 7px;font-size:10px">✕</button>
+      </div>
+      <label class="label">Headline — 3 to 6 words</label>
+      <input type="text" value="${escapeHtmlAttr(s.headline)}" data-k="headline" data-i="${i}" maxlength="48" class="input" />
+      ${appId==="vidiloop" ? `<label class="label" style="margin-top:7px">Preset image</label><select class="select-full" data-k="asset" data-i="${i}">${assetOptions.map((a,ai)=>`<option value="${ai}" ${ai===s.asset?"selected":""}>${a.label}</option>`).join("")}</select>` : ``}
+      <div class="row" style="margin-top:7px">
+        <label class="mini" style="flex:1;text-align:center;cursor:pointer">Upload<input type="file" accept="image/*" data-k="file" data-i="${i}" style="display:none"></label>
+        <button class="mini" data-k="dup" data-i="${i}">Duplicate</button>
+      </div>
+      ${s.file?`<div style="margin-top:6px;color:#64748b;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.file.split('/').pop().slice(0,34)}</div>`:""}
+    `;
+    div.addEventListener("click",()=>{ selected=i; render(); });
+    leftPanel.appendChild(div);
+  });
+  leftPanel.querySelectorAll("input[type=text], select").forEach(el=>{
+    el.addEventListener("click",e=>e.stopPropagation());
+    el.addEventListener("change",onEdit);
+    el.addEventListener("input",onEdit);
+  });
+  leftPanel.querySelectorAll("input[type=file]").forEach(el=>el.addEventListener("change", onFile));
+  leftPanel.querySelectorAll("button[data-k=remove]").forEach(el=>el.addEventListener("click",e=>{
+    e.stopPropagation();
+    const i=+el.dataset.i;
+    if(screens.length<=1) return alert("Keep at least 1 screen.");
+    screens.splice(i,1);
+    if(selected>=screens.length) selected=screens.length-1;
+    saveState(); render();
+  }));
+  leftPanel.querySelectorAll("button[data-k=dup]").forEach(el=>el.addEventListener("click",e=>{
+    e.stopPropagation();
+    const i=+el.dataset.i;
+    if(screens.length>=10) return alert("Max 10 screens (store limit).");
+    screens.splice(i+1,0, JSON.parse(JSON.stringify(screens[i])));
+    selected=i+1; saveState(); render();
+  }));
+}
+function escapeHtmlAttr(s){ return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+function onEdit(e){
+  const i=+e.target.dataset.i; const k=e.target.dataset.k;
+  if(k==="headline") screens[i].headline = e.target.value;
+  if(k==="asset"){
+    const ai=+e.target.value;
+    screens[i].asset = ai;
+    screens[i].file = VIDILOOP_ASSETS[ai].path;
+  }
+  saveState(); schedulePreview();
+}
+function onFile(e){
+  const i=+e.target.dataset.i;
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f);
+  screens[i].file=url; screens[i].asset=-1;
+  saveState(); render();
+}
+
+// brand listeners
+brandName.addEventListener("input",e=>{ brand.name=e.target.value||"App"; document.getElementById("previewTitle").textContent=`Preview — ${brand.name} · ${platform}`; saveState(); schedulePreview();});
+function syncPrimary(v){ brand.primary=v; brandPrimary.value=v; brandPrimaryText.value=v; document.documentElement.style.setProperty("--primary", v); saveState(); schedulePreview();}
+brandPrimary.addEventListener("input",e=>syncPrimary(e.target.value));
+brandPrimaryText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; if(/^#[0-9a-fA-F]{6}$/.test(v)) syncPrimary(v); });
+brandBg.addEventListener("input",e=>{ brand.bg=e.target.value; brandBgText.value=e.target.value; document.documentElement.style.setProperty("--bg", e.target.value); document.body.style.background=e.target.value; document.querySelector(".header").style.background=e.target.value; saveState(); schedulePreview();});
+brandBgText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; brand.bg=v; brandBg.value=v; document.documentElement.style.setProperty("--bg", v); saveState();});
+brandFont.addEventListener("change",e=>{ brand.font=e.target.value; saveState(); renderStripOnly();});
+deviceFrame.addEventListener("change",e=>{ brand.frame=e.target.value; saveState(); renderStripOnly();});
+const headlineSize = document.getElementById("headlineSize");
+const headlineSizeVal = document.getElementById("headlineSizeVal");
+const headlineWeight = document.getElementById("headlineWeight");
+const headlineColor = document.getElementById("headlineColor");
+const headlineColorText = document.getElementById("headlineColorText");
+const headlineAlign = document.getElementById("headlineAlign");
+function syncHeadlineSize(v){ brand.headlineSize = parseInt(v,10); headlineSizeVal.textContent = brand.headlineSize; schedulePreview(); }
+headlineSize.addEventListener("input",e=> syncHeadlineSize(e.target.value));
+headlineSize.addEventListener("change",()=> saveState());
+headlineWeight.addEventListener("change",e=>{ brand.headlineWeight = e.target.value; saveState(); renderStripOnly(); });
+function syncHeadlineColor(v){ brand.headlineColor=v; headlineColor.value=v; headlineColorText.value=v; saveState(); schedulePreview(); }
+headlineColor.addEventListener("input",e=> syncHeadlineColor(e.target.value));
+headlineColorText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; if(/^#[0-9a-fA-F]{6}$/.test(v)) syncHeadlineColor(v); });
+headlineAlign.addEventListener("change",e=>{ brand.headlineAlign=e.target.value; saveState(); renderStripOnly(); });
+document.getElementById("btnAddScreen").addEventListener("click",()=>{
+  if(screens.length>=10) return alert("Max 10 screens.");
+  screens.push({headline:"New screen", file:"", asset:-1});
+  selected=screens.length-1; saveState(); render();
+});
+document.getElementById("btnResetBrand").addEventListener("click",()=>{
+  const preset = APP_PRESETS[appId] || APP_PRESETS.generic;
+  brand = {name: preset.name, primary: preset.primary, bg: preset.bg, font:"Hanken Grotesk", frame:"island", headlineSize: preset.headlineSize, headlineWeight: preset.headlineWeight, headlineColor: preset.headlineColor, headlineAlign: preset.headlineAlign};
+  syncBrandUI(); saveState(); renderStripOnly();
+});
+appSelect.addEventListener("change",e=>{
+  const v=e.target.value;
+  // agnostic per-app: save current app state before switching
+  appStates[appId] = {brand: JSON.parse(JSON.stringify(brand)), screens: JSON.parse(JSON.stringify(screens))};
+  if(v==="custom"){
+    const name=prompt("App name?","My App");
+    if(!name) { appSelect.value=appId; return; }
+    const primary=prompt("Primary hex (#7c5cff)?","#7c5cff")||"#7c5cff";
+    appId="custom";
+    if(appStates[appId]){
+      const st = appStates[appId]; brand = st.brand; screens = st.screens;
+    } else {
+      brand = {name, primary, bg:"#0b0914", font:"Hanken Grotesk", frame:"island", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center"};
+      screens = [{headline:`Welcome to ${name}`, file:"", asset:-1}];
+    }
+  } else {
+    // restore per-app if exists, else preset
+    if(appStates[v]){
+      appId=v; const st = appStates[v]; brand = st.brand; screens = st.screens;
+    } else {
+      appId=v;
+      const p=APP_PRESETS[v];
+      brand = {name:p.name, primary:p.primary, bg:p.bg, font:"Hanken Grotesk", frame:"island", headlineSize:p.headlineSize, headlineWeight:p.headlineWeight, headlineColor:p.headlineColor, headlineAlign:p.headlineAlign};
+      screens = JSON.parse(JSON.stringify(p.screens));
+    }
+    selected=0;
+  }
+  syncBrandUI(); buildSizeBtns(); saveState(); render();
+});
+platformSelect.addEventListener("change",e=>{ platform=e.target.value; buildSizeBtns(); saveState(); renderStripOnly();});
+
+// ---- canvas draw ----
+const imageCache=new Map();
+function loadImage(src){
+  if(!src) return Promise.reject("empty");
+  if(imageCache.has(src)) return imageCache.get(src);
+  const p=new Promise((res,rej)=>{
+    const img=new Image(); img.crossOrigin="anonymous";
+    img.onload=()=>res(img); img.onerror=rej; img.src=src;
+  });
+  imageCache.set(src,p); return p;
+}
+async function drawCard(canvas, headline, src, W, H){
+  const ctx=canvas.getContext("2d");
+  canvas.width=W; canvas.height=H;
+  // bg
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+  const border=Math.round(W*0.012); const radius=Math.round(W*0.045);
+  roundRect(ctx, border, border, W-border*2, H-border*2, radius);
+  // border color from brand at ~30% opacity
+  const hex=brand.primary.replace("#",""); const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+  ctx.strokeStyle=`rgba(${r},${g},${b},0.32)`; ctx.lineWidth=Math.round(W*0.008); ctx.stroke();
+  ctx.fillStyle="#ffffff"; ctx.fill();
+  // headline — agnostic per-app: size/weight/color/align
+  const headlineY=Math.round(H*0.07); const maxWidth=W*0.86;
+  const fontSize=Math.round(W * (brand.headlineSize / 1320));
+  ctx.fillStyle=brand.headlineColor || "#0f172a";
+  ctx.textAlign=brand.headlineAlign || "center";
+  ctx.textBaseline="middle";
+  ctx.font=`${brand.headlineWeight || "700"} ${fontSize}px ${brand.font}, Inter, sans-serif`;
+  const words=headline.trim().split(/\s+/); let lines=[], line="";
+  for(const w of words){ const test=line?line+" "+w:w; if(ctx.measureText(test).width>maxWidth && line){lines.push(line); line=w;} else line=test;}
+  if(line) lines.push(line); if(lines.length>2) lines=lines.slice(0,2);
+  const lineHeight=fontSize*1.15; let y=headlineY+lineHeight/2; if(lines.length===2) y-=lineHeight*0.15;
+  const tx = brand.headlineAlign==="left" ? Math.round(W*0.07) : W/2;
+  lines.forEach(l=>{ctx.fillText(l, tx, y); y+=lineHeight;});
+  // phone
+  const phoneW=Math.round(W*0.775); const phoneH=Math.round(phoneW*2.16);
+  const phoneX=Math.round((W-phoneW)/2); const phoneY=Math.round(H*0.168);
+  const phoneR=Math.round(W*0.055);
+  ctx.save(); ctx.shadowColor="rgba(15,23,42,0.14)"; ctx.shadowBlur=Math.round(W*0.06); ctx.shadowOffsetY=Math.round(W*0.03);
+  roundRect(ctx, phoneX, phoneY, phoneW, phoneH, phoneR); ctx.fillStyle="#f8fafc"; ctx.fill(); ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=Math.max(1,Math.round(W*0.002)); ctx.stroke(); ctx.restore();
+  const inset=Math.round(W*0.012);
+  ctx.save(); roundRect(ctx, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, phoneR-Math.round(W*0.02)); ctx.clip();
+  try{
+    const img=await loadImage(src);
+    const pr=(phoneW-inset*2)/(phoneH-inset*2); const ir=img.width/img.height;
+    let dw,dh,dx,dy;
+    if(ir>pr){ dh=phoneH-inset*2; dw=dh*ir; dx=phoneX+inset+((phoneW-inset*2)-dw)/2; dy=phoneY+inset;}
+    else { dw=phoneW-inset*2; dh=dw/ir; dx=phoneX+inset; dy=phoneY+inset+((phoneH-inset*2)-dh)/2;}
+    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
+    ctx.drawImage(img, dx, dy, dw, dh);
+  }catch(e){
+    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
+    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(W*0.022)}px Inter`;
+    ctx.fillText("Upload a screenshot", W/2, phoneY+phoneH/2);
+  }
+  ctx.restore();
+  // device frame detail
+  if(brand.frame==="island"){
+    const diW=Math.round(phoneW*0.24); const diH=Math.round(W*0.028);
+    roundRect(ctx, phoneX+(phoneW-diW)/2, phoneY+Math.round(W*0.018), diW, diH, diH/2); ctx.fillStyle=brand.bg; ctx.fill();
+  } else if(brand.frame==="notch"){
+    const nw=Math.round(phoneW*0.42); const nh=Math.round(W*0.04);
+    roundRect(ctx, phoneX+(phoneW-nw)/2, phoneY, nw, nh, nh/2); ctx.fillStyle=brand.bg; ctx.fill();
+  }
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+let previewQueued=false;
+function schedulePreview(){
+  if(previewQueued) return;
+  previewQueued=true;
+  requestAnimationFrame(()=>{ previewQueued=false; renderStripOnly(); });
+}
+async function renderStripOnly(){
+  const [W,H]=exportSize.split("x").map(Number);
+  const previewW= platform==="android" && H<W ? 260 : 190;
+  const previewH=Math.round(previewW*H/W);
+  const ps=0.25, pw=Math.max(1,Math.round(W*ps)), ph=Math.max(1,Math.round(H*ps));
+  strip.innerHTML="";
+  for(let i=0;i<screens.length;i++){
+    const s=screens[i];
+    const wrap=document.createElement("div"); wrap.className="screen-wrap";
+    const frame=document.createElement("div"); frame.className="screen-frame"+(i===selected?" selected":"");
+    frame.style.width=previewW+"px"; frame.style.height=previewH+"px";
+    const c=document.createElement("canvas"); c.width=pw; c.height=ph; c.style.width="100%"; c.style.height="100%";
+    frame.appendChild(c);
+    const zb=document.createElement("button"); zb.className="zoom"; zb.type="button";
+    zb.setAttribute("aria-label",`Enlarge screen ${i+1}: ${s.headline||"Untitled"}`);
+    zb.innerHTML='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M7 5v4M5 7h4"/></svg>';
+    zb.addEventListener("click",ev=>{ev.stopPropagation(); openLightbox(i);});
+    frame.appendChild(zb);
+    wrap.appendChild(frame);
+    const lab=document.createElement("div"); lab.className="lab"; lab.textContent=(i+1)+" · "+(s.headline||"Untitled"); wrap.appendChild(lab);
+    frame.addEventListener("click",()=>{selected=i; render();});
+    strip.appendChild(wrap);
+    drawCard(c, s.headline||"Untitled", s.file, pw, ph);
+  }
+  document.getElementById("previewSub").textContent = `${brand.bg} page · white cards with ${brand.primary} stroke · ${brand.font}. Tap a card to edit, magnifier to enlarge. ${screens.length} screens.`;
+}
+async function render(){ buildLeft(); await renderStripOnly(); }
+function parseSize(s){return s.split("x").map(Number);}
+async function exportOne(index,W,H){
+  const s=screens[index];
+  const c=document.createElement("canvas");
+  await drawCard(c, s.headline, s.file, W, H);
+  const slug = s.headline.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,24) || "screen";
+  const name = `${String(index+1).padStart(2,"0")}_${slug}_${W}x${H}.png`;
+  const a=document.createElement("a"); a.download=name; a.href=c.toDataURL("image/png"); a.click();
+}
+async function exportAll(W,H){ for(let i=0;i<screens.length;i++){ await exportOne(i,W,H); await new Promise(r=>setTimeout(r,260)); } }
+document.getElementById("btnExportAll").addEventListener("click",()=>{
+  const [W,H]=parseSize(exportSize); exportAll(W,H);
+  if(platform==="both"){
+    const other = PLATFORM_SIZES.android[0].value; const [w2,h2]=parseSize(other);
+    setTimeout(()=>exportAll(w2,h2), 800);
+  }
+});
+document.getElementById("btnExportAll2").addEventListener("click",()=>{ const [W,H]=parseSize(exportSize); exportAll(W,H); });
+document.getElementById("btnExportSelected").addEventListener("click",()=>{ const [W,H]=parseSize(exportSize); exportOne(selected,W,H); });
+document.getElementById("btnExportOther").addEventListener("click",()=>{
+  const list = platform==="ios" ? PLATFORM_SIZES.android : PLATFORM_SIZES.ios;
+  const [W,H]=parseSize(list[0].value); exportAll(W,H);
+});
+document.getElementById("btnSave").addEventListener("click",()=>{ saveState(); const b=document.getElementById("btnSave"); const t=b.textContent; b.textContent="Saved ✓"; setTimeout(()=>b.textContent=t,1100);});
+const lightbox=document.getElementById("lightbox");
+const lbCanvas=document.getElementById("lbCanvas");
+let lbReturnFocus=null;
+async function openLightbox(i){
+  selected=Math.max(0,Math.min(i,screens.length-1));
+  const [W,H]=parseSize(exportSize);
+  await drawCard(lbCanvas, screens[selected].headline||"Untitled", screens[selected].file, W, H);
+  document.getElementById("lbCap").textContent=(selected+1)+" · "+(screens[selected].headline||"Untitled");
+  document.getElementById("lbSize").textContent=exportSize.replace("x"," × ");
+  lbReturnFocus=document.activeElement;
+  lightbox.hidden=false;
+  document.body.style.overflow="hidden";
+  document.getElementById("lbClose").focus();
+  renderStripOnly();
+}
+function closeLightbox(){
+  lightbox.hidden=true;
+  document.body.style.overflow="";
+  if(lbReturnFocus&&lbReturnFocus.focus) lbReturnFocus.focus();
+}
+async function stepLightbox(d){
+  selected=(selected+d+screens.length)%screens.length;
+  await openLightbox(selected);
+}
+document.querySelector(".lb-backdrop").addEventListener("click",closeLightbox);
+document.getElementById("lbClose").addEventListener("click",closeLightbox);
+document.getElementById("lbPrev").addEventListener("click",()=>stepLightbox(-1));
+document.getElementById("lbNext").addEventListener("click",()=>stepLightbox(1));
+document.getElementById("btnEnlarge").addEventListener("click",()=>openLightbox(selected));
+document.addEventListener("keydown",e=>{
+  const tag=(document.activeElement&&document.activeElement.tagName)||"";
+  const typing=/INPUT|SELECT|TEXTAREA/.test(tag);
+  if(!lightbox.hidden){
+    if(e.key==="Escape") closeLightbox();
+    else if(e.key==="ArrowLeft") stepLightbox(-1);
+    else if(e.key==="ArrowRight") stepLightbox(1);
+    return;
+  }
+  if(typing) return;
+  if(e.key>="1"&&e.key<="9"){
+    const i=+e.key-1;
+    if(i<screens.length){ selected=i; render(); }
+  } else if(e.key==="e"||e.key==="E"){ openLightbox(selected); }
+});
+render();
+</script>
+</body>
+</html>
