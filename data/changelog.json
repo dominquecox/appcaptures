@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "version": "0.3.0",
+      "date": "2026-10-19",
+      "notes": "Landing page with waitlist, news, and changelog. Studio moves to /app for local dogfooding."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-10-18",
+      "notes": "Enlarge lightbox with keyboard navigation. Quarter-scale previews cut memory ~16x; slider input rAF-throttled."
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-10-18",
+      "notes": "Agnostic per-app studio: brand + headline size, weight, color, and alignment remembered per app. iOS and Android export sizes."
+    }
+  ]
+}
