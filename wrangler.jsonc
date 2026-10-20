@@ -22,4 +22,9 @@
 			"remote": true
 		}
 	]
+	// SaaS roadmap — create Mini-side, then uncomment to bind (never on main until ready):
+	// "r2_buckets": [{ "binding": "EXPORTS", "bucket_name": "appcaptures-exports" }],
+	// "kv_namespaces": [{ "binding": "SESSIONS", "id": "PASTE_ID_HERE" }],
+	// "queues": { "producers": [{ "binding": "EXPORT_QUEUE", "queue": "appcaptures-exports" }] },
+	// "ai": { "binding": "AI" }
 }
