@@ -127,7 +127,7 @@ footer.site .right{margin-left:0}
 <input type="email" name="email" placeholder="you@studio.com" aria-label="Email address" required />
 <button class="btn accent" type="submit">Join waitlist</button>
 </form>
-<p class="fine">Free during dogfood · iOS, Android &amp; PWA</p>
+<p class="fine">Free to join · iOS, Android &amp; PWA</p>
 </div>
 <div class="phone" aria-hidden="true">
 <h3>Loop any moment</h3>
@@ -143,7 +143,7 @@ footer.site .right{margin-left:0}
 </main>
 <section class="block" id="features"><div class="wrap">
 <h2 class="sec">Everything the store asks for, ready at export.</h2>
-<p class="lede">One studio, every Ploonu app. Pick the brand, drop in real screens, export.</p>
+<p class="lede">One studio, every app. Pick the brand, drop in real screens, export.</p>
 <div class="cards">
 <div class="card"><span class="tag">Exact pixels</span><h3>iOS, Android, and PWA sizes</h3><p>1320×2868 for 6.9″, 1290×2796, iPad 2064×2752, Play 1080×1920 and more. What you export is what the store shows — RGB, no alpha, 1–10 per size.</p></div>
 <div class="card"><span class="tag">Any brand</span><h3>Vidiloop, Yaps, TypePress, yours</h3><p>Toggle apps and the whole system follows: colors from the live site, headline size, weight, color, alignment — remembered per app.</p></div>
@@ -165,7 +165,7 @@ footer.site .right{margin-left:0}
 </div></section>
 <section class="block" id="waitlist" style="border-top:0"><div class="wrap">
 <div class="band">
-<div><h2>Get in before launch day.</h2><p>Dogfood is open to Ploonu apps now. Public seats go to the waitlist first — iOS and Android included.</p></div>
+<div><h2>Get in before launch day.</h2><p>Early members shape the launch and get first access — iOS and Android included.</p></div>
 <div><form class="capture" id="wlBand" novalidate>
 <input type="email" name="email" placeholder="you@studio.com" aria-label="Email address" required />
 <button class="btn accent" type="submit">Join waitlist</button>
@@ -173,9 +173,9 @@ footer.site .right{margin-left:0}
 </div>
 </div></section>
 <footer class="site"><div class="wrap">
-<span>© 2026 AppCaptures · A Ploonu studio tool</span>
+<span>© 2026 AppCaptures</span>
 <a href="/news/">News</a><a href="/changelog/">Changelog</a>
-<span class="right">Dogfood build — launch updates go to the waitlist first.</span>
+<span class="right">Launch updates go to the waitlist first.</span>
 </div></footer>
 <script>
 async function loadJSON(path){
@@ -202,7 +202,7 @@ function wireWaitlist(id){
       if(!r.ok) throw 0;
       const b=await r.json().catch(()=>null);
       if(b&&typeof b.position==="number") serverPos=b.position;
-    }catch(err){ /* no DB yet (503) or offline: local fallback below keeps dogfood working */ }
+    }catch(err){ /* offline: local fallback below keeps signup working */ }
     try{
       const k="appcaptures_waitlist", cur=JSON.parse(localStorage.getItem(k)||"[]");
       if(!cur.some(x=>x.email===email)) cur.push(entry);
