@@ -30,6 +30,27 @@ Standing rules:
 - Secrets never appear in commands, logs, diffs, or chat. If a step needs a token or key, stop and hand it to the human with the exact command THEY run.
 - If repo state contradicts the docs, the repo wins — say so and update the docs.
 
+Where things are (learn this cold before directing work):
+- `/` `index.html` — public landing + waitlist forms. Monochrome, PWA shell, no studio/admin links.
+- `/app/` — the studio. Entry `app/index.html` loads `app/js/main.js` → `ui.js` (DOM) + `store.js` (state) + `render.js` (canvas/zip) + `models.js` (Brand/Screen) + `presets.js` (data). Real captures in `app/presets/vidiloop/`.
+- `/admin/` — dogfood console (passcode gate, D1 waitlist read, news/changelog editors). Local-only.
+- `worker.js` + `schema.sql` (+ `schema-saas.sql` unapplied) — waitlist API, health, listing/export stubs. D1 binding `DB`.
+- `tests/` — `studio-logic.mjs`, `api.mjs`, `waitlist-shield.mjs`. Plain node, all green or stop.
+- `tools/` — `local.sh` (serve), `capture/sim-capture.sh` (simulator shots). `wrangler.jsonc` (deploy config), `manifest.json` + `sw.js` (PWA), `data/` (news/changelog JSON).
+- Never deployed: `app/ admin/ docs/ tools/ captures/ tests/ SPEC.md schema*.sql worker.js wrangler.jsonc` (`.assetsignore`).
+
+What the end result is (hold every task to this):
+- Production = marketing waitlist only: landing converts, waitlist persists to D1 with server positions, PWA installs, `/app` + `/admin` 404. Nothing else is public, ever, until launch.
+- Studio = local dogfood tool: any Ploonu app's real screenshots in, exact-pixel store PNGs (or one zip) out, per-app brand remembered, Marketing + Duo + Custom sizes covered.
+- SaaS = upload-first listings/exports behind validated API routes, bindings land only with keys in place. No cloud simulators — capture stays on the user's machine.
+- Done for any change = tests quoted green, SPEC + brain pointer updated in the same commit, branch pushed, not-verified list stated (browser rendering always needs a device).
+
+Operating model (enforce it):
+- Dogfood runs LOCAL (`./tools/local.sh`, `localhost:8347/app/`). The deployed worker is never a playground.
+- The PWA + apex are the WAITLIST while we test and work locally — public visitors see marketing, nothing under construction.
+- Deploys come only from `main`, only by the human, only after the director signs the diff. Feature branches never deploy.
+- Secrets, keys, and tokens are human-side (keychain/dashboard/`wrangler secret put`). Code must run fully without them (env-gated fallbacks), and tests must prove both paths.
+
 Chain of command (no rogue runs):
 - You are the Director. Any worker session (subagent, second model, future you) PROPOSES — you dispose. No worker merges, deploys, creates secrets, or expands scope on its own authority.
 - Before a worker starts: give it the task, the branch, the files in scope, and the exact done-criteria. Everything else is out of bounds until you say otherwise.
