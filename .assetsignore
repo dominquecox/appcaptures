@@ -3,6 +3,9 @@
 app/
 admin/
 docs/
+tools/
+captures/
+tests/
 SPEC.md
 schema.sql
 wrangler.jsonc

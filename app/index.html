@@ -99,9 +99,11 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
       <option value="ios">iOS App Store</option>
       <option value="android">Google Play</option>
       <option value="both">Both</option>
+      <option value="marketing">Marketing headers</option>
     </select></div>
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
     <button class="btn" id="btnSave">Save</button>
+    <button class="btn ghost" id="btnResetAll" title="Clear saved studio state and reload fresh presets">Reset</button>
     <button class="btn primary" id="btnExportAll">Export all</button>
   </div>
 </div>
@@ -191,20 +193,14 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
 
 <script>
 const VIDILOOP_ASSETS = [
-  {label:"Feed — For You", path:"../../designassets/for_you_feed/screen.png"},
-  {label:"Capture — Camera", path:"../../designassets/capture_screen/screen.png"},
-  {label:"Editor — Trim", path:"../../designassets/video_editor/screen.png"},
-  {label:"Discovery — Search", path:"../../designassets/discovery_search/screen.png"},
-  {label:"Profile + Top 8", path:"../../designassets/profile_screen/screen.png"},
-  {label:"Top 8 — Edit / Reorder", path:"../../designassets/top_8_edit_reorder/screen.png"},
-  {label:"Notifications", path:"../../designassets/notifications/screen.png"},
-  {label:"Onboarding / Auth", path:"../../designassets/onboarding_auth/screen.png"},
-  {label:"Settings", path:"../../designassets/settings/screen.png"},
-  {label:"Post Preview", path:"../../designassets/post_preview_screen/screen.png"},
-  {label:"Upload Picker", path:"../../designassets/upload_picker/screen.png"},
-  {label:"Comments Sheet", path:"../../designassets/comments_sheet/screen.png"},
-  {label:"Age Verification", path:"../../designassets/age_verification/screen.png"},
-  {label:"Username Creation", path:"../../designassets/username_creation/screen.png"},
+  {label:"Onboarding — Welcome", path:"presets/vidiloop/onboarding/screen.png"},
+  {label:"Feed — For You", path:"presets/vidiloop/for_you_feed/screen.png"},
+  {label:"Capture — Camera", path:"presets/vidiloop/capture/screen.png"},
+  {label:"Editor — Trim", path:"presets/vidiloop/trim_editor/screen.png"},
+  {label:"Discovery — Search", path:"presets/vidiloop/discover/screen.png"},
+  {label:"Profile + Top 8", path:"presets/vidiloop/profile_top8/screen.png"},
+  {label:"Notifications", path:"presets/vidiloop/notifications/screen.png"},
+  {label:"Vidiloop+ — Paywall", path:"presets/vidiloop/plus_paywall/screen.png"},
 ];
 const PLATFORM_SIZES = {
   ios: [
@@ -219,19 +215,24 @@ const PLATFORM_SIZES = {
     {value:"1440x2560", label:"1440×2560", note:"QHD"},
     {value:"1080x2400", label:"1080×2400", note:"Modern"},
     {value:"1440x3120", label:"1440×3120", note:"Tall"},
+  ],
+  marketing: [
+    {value:"5244x2950", label:"5244×2950", note:"Header 16:9"},
+    {value:"3840x1646", label:"3840×1646", note:"Header wide"},
   ]
 };
+const CUSTOM_SIZES = []; // session-only custom WxH entries (not persisted)
 const APP_PRESETS = {
   vidiloop: {
     id:"vidiloop", name:"Vidiloop", primary:"#7c5cff", bg:"#0b0914", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
-      {headline:"Welcome to Vidiloop", file:"../../designassets/onboarding_auth/screen.png", asset:7},
-      {headline:"Loop any moment", file:"../../designassets/for_you_feed/screen.png", asset:0},
-      {headline:"Capture in 8 seconds", file:"../../designassets/capture_screen/screen.png", asset:1},
-      {headline:"Trim in seconds", file:"../../designassets/video_editor/screen.png", asset:2},
-      {headline:"Build a Series", file:"../../designassets/post_preview_screen/screen.png", asset:9},
-      {headline:"Go further with Plus", file:"../../designassets/settings/screen.png", asset:8},
-      {headline:"Your Top 8 is showing", file:"../../designassets/profile_screen/screen.png", asset:4},
-      {headline:"Never miss a loop", file:"../../designassets/notifications/screen.png", asset:6},
+      {headline:"Welcome to Vidiloop", file:"presets/vidiloop/onboarding/screen.png", asset:0},
+      {headline:"Loop any moment", file:"presets/vidiloop/for_you_feed/screen.png", asset:1},
+      {headline:"Capture in 8 seconds", file:"presets/vidiloop/capture/screen.png", asset:2},
+      {headline:"Trim in seconds", file:"presets/vidiloop/trim_editor/screen.png", asset:3},
+      {headline:"Discover endless loops", file:"presets/vidiloop/discover/screen.png", asset:4},
+      {headline:"Your Top 8 is showing", file:"presets/vidiloop/profile_top8/screen.png", asset:5},
+      {headline:"Never miss a loop", file:"presets/vidiloop/notifications/screen.png", asset:6},
+      {headline:"Go further with Plus", file:"presets/vidiloop/plus_paywall/screen.png", asset:7},
     ]
   },
   yaps: {
@@ -315,6 +316,10 @@ function loadState(){
   brand.headlineColor = brand.headlineColor || "#0f172a";
   brand.headlineAlign = brand.headlineAlign || "center";
   if(!screens.length && APP_PRESETS[appId]) screens = JSON.parse(JSON.stringify(APP_PRESETS[appId].screens));
+  // sanitize persisted brand tones (6-digit hex) + drop dead blob: URLs
+  brand.primary = normHex(brand.primary, "#7c5cff");
+  brand.bg = normHex(brand.bg, "#0b0914");
+  screens.forEach(s=>{ if(typeof s.file === "string" && s.file.startsWith("blob:")) s.file = ""; });
 }
 function saveState(){
   // agnostic per-app: save current app into map, then persist map + current pointers to v3
@@ -324,6 +329,25 @@ function saveState(){
   localStorage.setItem("ploonu_screenshots_v2", JSON.stringify({appId, platform, exportSize, brand, screens}));
 }
 loadState();
+
+// shared guards: hex tones, filename slugs, selection bounds
+function normHex(v, fallback){
+  let s = String(v == null ? "" : v).trim();
+  if(!s.startsWith("#")) s = "#" + s;
+  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(s);
+  if(!m) return fallback;
+  let h = m[1];
+  if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return "#" + h.toLowerCase();
+}
+function slugFor(headline){
+  return String(headline || "").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,24) || "screen";
+}
+function clampSelected(){
+  if(selected >= screens.length) selected = Math.max(0, screens.length - 1);
+  if(selected < 0) selected = 0;
+  return selected;
+}
 
 const appSelect = document.getElementById("appSelect");
 const platformSelect = document.getElementById("platformSelect");
@@ -368,11 +392,13 @@ function syncBrandUI(){
 syncBrandUI();
 
 function buildSizeBtns(){
-  const list = platform==="both" ? [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android] : PLATFORM_SIZES[platform];
+  const base = platform==="both" ? [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android] : PLATFORM_SIZES[platform];
+  const list = [...base, ...CUSTOM_SIZES.filter(c=>c.platform===platform||platform==="both")];
   // ensure exportSize valid
   if(!list.find(s=>s.value===exportSize)) exportSize = list[0].value;
-  sizeBtns.innerHTML = list.map(s=>`<button class="size-btn ${s.value===exportSize?"active":""}" data-size="${s.value}">${s.label}</button>`).join("");
+  sizeBtns.innerHTML = list.map(s=>`<button class="size-btn ${s.value===exportSize?"active":""}" data-size="${s.value}">${s.label}</button>`).join("") + `<button class="size-btn" data-size="__custom">Custom…</button>`;
   sizeBtns.querySelectorAll(".size-btn").forEach(b=>b.addEventListener("click",()=>{
+    if(b.dataset.size==="__custom"){ addCustomSize(); return; }
     exportSize=b.dataset.size;
     syncSizeBadge();
     renderStripOnly();
@@ -380,10 +406,20 @@ function buildSizeBtns(){
     buildSizeBtns();
   }));
   syncSizeBadge();
-  document.getElementById("previewTitle").textContent = `Preview — ${brand.name} · ${platform==="ios"?"iOS":platform==="android"?"Android":"iOS + Android"}`;
+  const platLabel = platform==="ios"?"iOS":platform==="android"?"Android":platform==="marketing"?"Marketing":"iOS + Android";
+  document.getElementById("previewTitle").textContent = `Preview — ${brand.name} · ${platLabel}`;
+}
+function addCustomSize(){
+  const v=prompt("Custom size as WIDTHxHEIGHT (e.g. 1320x2868)?","");
+  if(!v) return;
+  const m=/^(\d+)x(\d+)$/.exec(v.trim());
+  if(!m || +m[1]<100 || +m[2]<100 || +m[1]>6000 || +m[2]>6000){ alert("Use WIDTHxHEIGHT, 100–6000 each."); return; }
+  exportSize=`${+m[1]}x${+m[2]}`;
+  CUSTOM_SIZES.push({value:exportSize, label:`${+m[1]}×${+m[2]}`, note:"Custom", platform});
+  syncSizeBadge(); renderStripOnly(); saveState(); buildSizeBtns();
 }
 function syncSizeBadge(){
-  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android];
+  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android, ...PLATFORM_SIZES.marketing, ...CUSTOM_SIZES];
   const f = all.find(s=>s.value===exportSize);
   document.getElementById("sizeBadge").textContent = exportSize.replace("x"," × ") + (f?` · ${f.note}`:"");
 }
@@ -457,11 +493,11 @@ function onFile(e){
 
 // brand listeners
 brandName.addEventListener("input",e=>{ brand.name=e.target.value||"App"; document.getElementById("previewTitle").textContent=`Preview — ${brand.name} · ${platform}`; saveState(); schedulePreview();});
-function syncPrimary(v){ brand.primary=v; brandPrimary.value=v; brandPrimaryText.value=v; document.documentElement.style.setProperty("--primary", v); saveState(); schedulePreview();}
+function syncPrimary(v){ v=normHex(v,brand.primary); brand.primary=v; brandPrimary.value=v; brandPrimaryText.value=v; document.documentElement.style.setProperty("--primary", v); saveState(); schedulePreview();}
 brandPrimary.addEventListener("input",e=>syncPrimary(e.target.value));
 brandPrimaryText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; if(/^#[0-9a-fA-F]{6}$/.test(v)) syncPrimary(v); });
-brandBg.addEventListener("input",e=>{ brand.bg=e.target.value; brandBgText.value=e.target.value; document.documentElement.style.setProperty("--bg", e.target.value); document.body.style.background=e.target.value; document.querySelector(".header").style.background=e.target.value; saveState(); schedulePreview();});
-brandBgText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; brand.bg=v; brandBg.value=v; document.documentElement.style.setProperty("--bg", v); saveState();});
+brandBg.addEventListener("input",e=>{ const v=normHex(e.target.value,brand.bg); brand.bg=v; brandBg.value=v; brandBgText.value=v; document.documentElement.style.setProperty("--bg", v); document.body.style.background=v; document.querySelector(".header").style.background=v; saveState(); schedulePreview();});
+brandBgText.addEventListener("change",e=>{ const v=normHex(e.target.value,brand.bg); brand.bg=v; brandBg.value=v; brandBgText.value=v; document.documentElement.style.setProperty("--bg", v); document.body.style.background=v; document.querySelector(".header").style.background=v; saveState(); schedulePreview();});
 brandFont.addEventListener("change",e=>{ brand.font=e.target.value; saveState(); renderStripOnly();});
 deviceFrame.addEventListener("change",e=>{ brand.frame=e.target.value; saveState(); renderStripOnly();});
 const headlineSize = document.getElementById("headlineSize");
@@ -495,7 +531,7 @@ appSelect.addEventListener("change",e=>{
   if(v==="custom"){
     const name=prompt("App name?","My App");
     if(!name) { appSelect.value=appId; return; }
-    const primary=prompt("Primary hex (#7c5cff)?","#7c5cff")||"#7c5cff";
+    const primary=normHex(prompt("Primary hex (#7c5cff)?","#7c5cff"),"#7c5cff");
     appId="custom";
     if(appStates[appId]){
       const st = appStates[appId]; brand = st.brand; screens = st.screens;
@@ -513,14 +549,22 @@ appSelect.addEventListener("change",e=>{
       brand = {name:p.name, primary:p.primary, bg:p.bg, font:"Hanken Grotesk", frame:"island", headlineSize:p.headlineSize, headlineWeight:p.headlineWeight, headlineColor:p.headlineColor, headlineAlign:p.headlineAlign};
       screens = JSON.parse(JSON.stringify(p.screens));
     }
-    selected=0;
   }
-  syncBrandUI(); buildSizeBtns(); saveState(); render();
+  selected=0; syncBrandUI(); buildSizeBtns(); saveState(); render();
 });
 platformSelect.addEventListener("change",e=>{ platform=e.target.value; buildSizeBtns(); saveState(); renderStripOnly();});
 
 // ---- canvas draw ----
 const imageCache=new Map();
+// cover-fit an image into x,y,w,h over a bg fill
+function paintCover(ctx, img, x, y, w, h, bg){
+  const pr=w/h, ir=img.width/img.height;
+  let dw,dh,dx,dy;
+  if(ir>pr){ dh=h; dw=dh*ir; dx=x+(w-dw)/2; dy=y; }
+  else { dw=w; dh=dw/ir; dx=x; dy=y+(h-dh)/2; }
+  ctx.fillStyle=bg; ctx.fillRect(x,y,w,h);
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
 function loadImage(src){
   if(!src) return Promise.reject("empty");
   if(imageCache.has(src)) return imageCache.get(src);
@@ -531,6 +575,7 @@ function loadImage(src){
   imageCache.set(src,p); return p;
 }
 async function drawCard(canvas, headline, src, W, H){
+  headline = headline || "Untitled";
   const ctx=canvas.getContext("2d");
   canvas.width=W; canvas.height=H;
   // bg
@@ -564,15 +609,10 @@ async function drawCard(canvas, headline, src, W, H){
   ctx.save(); roundRect(ctx, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, phoneR-Math.round(W*0.02)); ctx.clip();
   try{
     const img=await loadImage(src);
-    const pr=(phoneW-inset*2)/(phoneH-inset*2); const ir=img.width/img.height;
-    let dw,dh,dx,dy;
-    if(ir>pr){ dh=phoneH-inset*2; dw=dh*ir; dx=phoneX+inset+((phoneW-inset*2)-dw)/2; dy=phoneY+inset;}
-    else { dw=phoneW-inset*2; dh=dw/ir; dx=phoneX+inset; dy=phoneY+inset+((phoneH-inset*2)-dh)/2;}
-    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
-    ctx.drawImage(img, dx, dy, dw, dh);
+    paintCover(ctx, img, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, brand.bg);
   }catch(e){
     ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
-    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(W*0.022)}px Inter`;
+    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(W*0.022)}px Inter`; ctx.textAlign="center";
     ctx.fillText("Upload a screenshot", W/2, phoneY+phoneH/2);
   }
   ctx.restore();
@@ -585,6 +625,55 @@ async function drawCard(canvas, headline, src, W, H){
     roundRect(ctx, phoneX+(phoneW-nw)/2, phoneY, nw, nh, nh/2); ctx.fillStyle=brand.bg; ctx.fill();
   }
 }
+// landscape marketing header: headline left, device right, sized by height
+async function drawHeader(canvas, headline, src, W, H){
+  headline = headline || "Untitled";
+  const ctx=canvas.getContext("2d");
+  canvas.width=W; canvas.height=H;
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+  const border=Math.max(2,Math.round(H*0.02)); const radius=Math.round(H*0.09);
+  roundRect(ctx, border, border, W-border*2, H-border*2, radius);
+  const hex=brand.primary.replace("#",""); const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+  ctx.strokeStyle=`rgba(${r},${g},${b},0.32)`; ctx.lineWidth=Math.max(2,Math.round(H*0.014)); ctx.stroke();
+  ctx.fillStyle="#ffffff"; ctx.fill();
+  // headline block, left
+  const fontSize=Math.round(W*(brand.headlineSize/1320));
+  ctx.fillStyle=brand.headlineColor||"#0f172a"; ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.font=`${brand.headlineWeight||"700"} ${fontSize}px ${brand.font}, Inter, sans-serif`;
+  const maxWidth=W*0.36;
+  const words=headline.trim().split(/\s+/); let lines=[], line="";
+  for(const w of words){ const test=line?line+" "+w:w; if(ctx.measureText(test).width>maxWidth && line){lines.push(line); line=w;} else line=test;}
+  if(line) lines.push(line); if(lines.length>3) lines=lines.slice(0,3);
+  const lineHeight=fontSize*1.15; const tx=Math.round(W*0.07);
+  let y=Math.round(H/2-((lines.length-1)*lineHeight)/2);
+  lines.forEach(l=>{ctx.fillText(l, tx, y); y+=lineHeight;});
+  // device, right, sized by height
+  const phoneH=Math.round(H*0.74); const phoneW=Math.round(phoneH/2.16);
+  const phoneX=Math.round(W*0.93-phoneW); const phoneY=Math.round((H-phoneH)/2);
+  const phoneR=Math.round(H*0.09);
+  ctx.save(); ctx.shadowColor="rgba(15,23,42,0.14)"; ctx.shadowBlur=Math.round(H*0.1); ctx.shadowOffsetY=Math.round(H*0.05);
+  roundRect(ctx, phoneX, phoneY, phoneW, phoneH, phoneR); ctx.fillStyle="#f8fafc"; ctx.fill(); ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=Math.max(1,Math.round(H*0.004)); ctx.stroke(); ctx.restore();
+  const inset=Math.max(2,Math.round(H*0.02));
+  ctx.save(); roundRect(ctx, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, Math.max(1,phoneR-inset*2)); ctx.clip();
+  try{
+    const img=await loadImage(src);
+    paintCover(ctx, img, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, brand.bg);
+  }catch(e){
+    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
+    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(H*0.04)}px Inter`; ctx.textAlign="center";
+    ctx.fillText("Upload a screenshot", phoneX+phoneW/2, phoneY+phoneH/2);
+  }
+  ctx.restore();
+  if(brand.frame==="island"){
+    const diW=Math.round(phoneW*0.24); const diH=Math.round(H*0.05);
+    roundRect(ctx, phoneX+(phoneW-diW)/2, phoneY+Math.round(H*0.03), diW, diH, diH/2); ctx.fillStyle=brand.bg; ctx.fill();
+  } else if(brand.frame==="notch"){
+    const nw=Math.round(phoneW*0.42); const nh=Math.round(H*0.07);
+    roundRect(ctx, phoneX+(phoneW-nw)/2, phoneY, nw, nh, nh/2); ctx.fillStyle=brand.bg; ctx.fill();
+  }
+}
+// portrait screenshot card vs landscape marketing header
+function draw(canvas, headline, src, W, H){ return W>H ? drawHeader(canvas,headline,src,W,H) : drawCard(canvas,headline,src,W,H); }
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 let previewQueued=false;
 function schedulePreview(){
@@ -594,7 +683,7 @@ function schedulePreview(){
 }
 async function renderStripOnly(){
   const [W,H]=exportSize.split("x").map(Number);
-  const previewW= platform==="android" && H<W ? 260 : 190;
+  const previewW= H<W ? 340 : 190;
   const previewH=Math.round(previewW*H/W);
   const ps=0.25, pw=Math.max(1,Math.round(W*ps)), ph=Math.max(1,Math.round(H*ps));
   strip.innerHTML="";
@@ -614,26 +703,83 @@ async function renderStripOnly(){
     const lab=document.createElement("div"); lab.className="lab"; lab.textContent=(i+1)+" · "+(s.headline||"Untitled"); wrap.appendChild(lab);
     frame.addEventListener("click",()=>{selected=i; render();});
     strip.appendChild(wrap);
-    drawCard(c, s.headline||"Untitled", s.file, pw, ph);
+    draw(c, s.headline||"Untitled", s.file, pw, ph);
   }
   document.getElementById("previewSub").textContent = `${brand.bg} page · white cards with ${brand.primary} stroke · ${brand.font}. Tap a card to edit, magnifier to enlarge. ${screens.length} screens.`;
 }
 async function render(){ buildLeft(); await renderStripOnly(); }
 function parseSize(s){return s.split("x").map(Number);}
+// minimal stored (uncompressed) zip writer — PNGs already compress, so
+// method 0 keeps it dependency-free and fast. Little-endian by spec.
+const CRC_T = (()=>{
+  const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++){ c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); } t[n]=c>>>0; }
+  return t;
+})();
+function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c=CRC_T[(c^u8[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){
+  const te=new TextEncoder(), out=[];
+  let off=0; const cd=[];
+  const w32=v=>{ const b=new Uint8Array(4); new DataView(b.buffer).setUint32(0,v,true); out.push(b); };
+  const w16=v=>{ const b=new Uint8Array(2); new DataView(b.buffer).setUint16(0,v,true); out.push(b); };
+  const d=new Date();
+  const mtime=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  const mdate=((d.getFullYear()-1980)<<25)|((d.getMonth()+1)<<21)|(d.getDate()<<16);
+  for(const f of files){
+    const name=te.encode(f.name), crc=crc32(f.data), lh=off;
+    w32(0x04034b50); w16(20); w16(0x0800); w16(0); w16(mtime); w16(mdate);
+    w32(crc); w32(f.data.length); w32(f.data.length);
+    w16(name.length); w16(0); out.push(name); out.push(f.data);
+    off+=30+name.length+f.data.length;
+    cd.push({name, crc, len:f.data.length, off:lh});
+  }
+  const cdOff=off; let cdSize=0;
+  for(const e of cd){
+    w32(0x02014b50); w16(20); w16(20); w16(0x0800); w16(0); w16(mtime); w16(mdate);
+    w32(e.crc); w32(e.len); w32(e.len); w16(e.name.length);
+    w16(0); w16(0); w16(0); w16(0); w32(0);
+    w32(e.off); out.push(e.name);
+    cdSize+=46+e.name.length;
+  }
+  w32(0x06054b50); w16(0); w16(0); w16(cd.length); w16(cd.length);
+  w32(cdSize); w32(cdOff); w16(0);
+  return new Blob(out, {type:"application/zip"});
+}
+function canvasBytes(c){ return new Promise(res=>c.toBlob(b=>b.arrayBuffer().then(ab=>res(new Uint8Array(ab))), "image/png")); }
 async function exportOne(index,W,H){
+  index = Math.max(0, Math.min(index, screens.length - 1));
   const s=screens[index];
   const c=document.createElement("canvas");
-  await drawCard(c, s.headline, s.file, W, H);
-  const slug = s.headline.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,24) || "screen";
+  await draw(c, s.headline, s.file, W, H);
+  const slug = slugFor(s.headline);
   const name = `${String(index+1).padStart(2,"0")}_${slug}_${W}x${H}.png`;
   const a=document.createElement("a"); a.download=name; a.href=c.toDataURL("image/png"); a.click();
 }
-async function exportAll(W,H){ for(let i=0;i<screens.length;i++){ await exportOne(i,W,H); await new Promise(r=>setTimeout(r,260)); } }
-document.getElementById("btnExportAll").addEventListener("click",()=>{
-  const [W,H]=parseSize(exportSize); exportAll(W,H);
+async function exportAll(W,H){
+  const files=[];
+  const btns=[document.getElementById("btnExportAll"),document.getElementById("btnExportAll2")];
+  const labels=btns.map(b=>b&&b.textContent);
+  try{
+    for(let i=0;i<screens.length;i++){
+      btns.forEach(b=>{ if(b) b.textContent=`Zipping ${i+1}/${screens.length}…`; });
+      const s=screens[i];
+      const c=document.createElement("canvas");
+      await draw(c, s.headline, s.file, W, H);
+      files.push({name:`${String(i+1).padStart(2,"0")}_${slugFor(s.headline)}_${W}x${H}.png`, data:await canvasBytes(c)});
+    }
+    const a=document.createElement("a");
+    a.download=`${(brand.name||"app").toLowerCase().replace(/[^a-z0-9]+/g,"-")}_${W}x${H}.zip`;
+    a.href=URL.createObjectURL(zipStore(files)); a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+  }finally{
+    btns.forEach((b,i)=>{ if(b) b.textContent=labels[i]; });
+  }
+}
+document.getElementById("btnExportAll").addEventListener("click",async ()=>{
+  const [W,H]=parseSize(exportSize); await exportAll(W,H);
   if(platform==="both"){
     const other = PLATFORM_SIZES.android[0].value; const [w2,h2]=parseSize(other);
-    setTimeout(()=>exportAll(w2,h2), 800);
+    await exportAll(w2,h2);
   }
 });
 document.getElementById("btnExportAll2").addEventListener("click",()=>{ const [W,H]=parseSize(exportSize); exportAll(W,H); });
@@ -643,13 +789,18 @@ document.getElementById("btnExportOther").addEventListener("click",()=>{
   const [W,H]=parseSize(list[0].value); exportAll(W,H);
 });
 document.getElementById("btnSave").addEventListener("click",()=>{ saveState(); const b=document.getElementById("btnSave"); const t=b.textContent; b.textContent="Saved ✓"; setTimeout(()=>b.textContent=t,1100);});
+document.getElementById("btnResetAll").addEventListener("click",()=>{
+  if(!confirm("Reset studio? Clears saved brands, screens, and uploads, then reloads fresh presets.")) return;
+  try{ localStorage.removeItem("ploonu_screenshots_v3"); localStorage.removeItem("ploonu_screenshots_v2"); }catch(e){}
+  location.reload();
+});
 const lightbox=document.getElementById("lightbox");
 const lbCanvas=document.getElementById("lbCanvas");
 let lbReturnFocus=null;
 async function openLightbox(i){
   selected=Math.max(0,Math.min(i,screens.length-1));
   const [W,H]=parseSize(exportSize);
-  await drawCard(lbCanvas, screens[selected].headline||"Untitled", screens[selected].file, W, H);
+  await draw(lbCanvas, screens[selected].headline||"Untitled", screens[selected].file, W, H);
   document.getElementById("lbCap").textContent=(selected+1)+" · "+(screens[selected].headline||"Untitled");
   document.getElementById("lbSize").textContent=exportSize.replace("x"," × ");
   lbReturnFocus=document.activeElement;
@@ -682,8 +833,8 @@ document.addEventListener("keydown",e=>{
     return;
   }
   if(typing) return;
-  if(e.key>="1"&&e.key<="9"){
-    const i=+e.key-1;
+  if((e.key>="1"&&e.key<="9")||e.key==="0"){
+    const i=e.key==="0"?9:+e.key-1;
     if(i<screens.length){ selected=i; render(); }
   } else if(e.key==="e"||e.key==="E"){ openLightbox(selected); }
 });
