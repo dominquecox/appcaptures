@@ -4,6 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Changelog — AppCaptures</title>
+<meta name="theme-color" content="#f4f6f7" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="AppCaptures" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <meta name="description" content="AppCaptures changelog: every shipped version." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Hanken+Grotesk:wght@700;800&display=swap" rel="stylesheet">
@@ -39,5 +47,6 @@ fetch("/data/changelog.json").then(r=>r.json()).then(j=>{
   document.getElementById("list").innerHTML=items.map(c=>`<div class="entry"><h2><code>${esc(c.version)}</code></h2><time>${esc(c.date)}</time><p>${esc(c.notes)}</p></div>`).join("")||"<p>Nothing shipped yet.</p>";
 }).catch(()=>{ document.getElementById("list").innerHTML="<p>Couldn't load changelog — check back soon.</p>"; });
 </script>
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){})})}</script>
 </body>
 </html>

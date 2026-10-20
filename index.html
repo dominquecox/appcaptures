@@ -6,6 +6,13 @@
 <title>AppCaptures — App Store screenshots without Canva</title>
 <meta name="description" content="Generate App Store and Google Play screenshots, app icons, and store listings for iOS and Android apps. Exact store pixels, any brand, no Canva." />
 <meta name="theme-color" content="#f4f6f7" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="AppCaptures" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <meta property="og:title" content="AppCaptures — Ship screenshots that get the tap" />
 <meta property="og:description" content="Exact-pixel App Store + Play screenshots, icons, and AI-assisted listings for any app." />
 <meta property="og:type" content="website" />
@@ -196,5 +203,6 @@ function wireWaitlist(id){
 }
 wireWaitlist("wlTop"); wireWaitlist("wlBand"); previews();
 </script>
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){})})}</script>
 </body>
 </html>
