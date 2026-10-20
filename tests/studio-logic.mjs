@@ -52,4 +52,19 @@ assert.ok(src.includes('selected=0; syncBrandUI();'), "app switch must reset sel
 assert.ok(src.includes('startsWith("blob:")'), "blob: URLs must be cleared on load");
 assert.ok(src.includes('headline = headline || "Untitled"'), "drawCard needs empty-headline fallback");
 
+// mergeWaitlist(server, local): D1 rows first, deduped by email (case-insensitive).
+const asrc = readFileSync(path.join(root, "admin", "index.html"), "utf8");
+const am = asrc.match(/function mergeWaitlist\(.*?\{\n[\s\S]*?\n\}/);
+assert.ok(am, "mergeWaitlist must exist in admin/index.html");
+const mergeWaitlist = new Function(`${am[0]}; return mergeWaitlist;`)();
+const merged = mergeWaitlist(
+  [{ email: "A@x.com", at: "2026-10-19 05:15:03", via: "verify" }],
+  [{ email: "a@X.com", at: "iso", via: "local" }, { email: "b@x.com", at: "iso", via: "local" }]
+);
+assert.equal(merged.length, 2);
+assert.equal(merged[0].srv, true);
+assert.equal(merged[0].via, "verify");
+assert.equal(merged[1].email, "b@x.com");
+assert.equal(mergeWaitlist(null, null).length, 0);
+
 console.log("studio-logic: all assertions passed");
