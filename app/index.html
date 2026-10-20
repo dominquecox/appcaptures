@@ -103,6 +103,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
     </select></div>
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
     <button class="btn" id="btnSave">Save</button>
+    <button class="btn ghost" id="btnResetAll" title="Clear saved studio state and reload fresh presets">Reset</button>
     <button class="btn primary" id="btnExportAll">Export all</button>
   </div>
 </div>
@@ -732,6 +733,11 @@ document.getElementById("btnExportOther").addEventListener("click",()=>{
   const [W,H]=parseSize(list[0].value); exportAll(W,H);
 });
 document.getElementById("btnSave").addEventListener("click",()=>{ saveState(); const b=document.getElementById("btnSave"); const t=b.textContent; b.textContent="Saved ✓"; setTimeout(()=>b.textContent=t,1100);});
+document.getElementById("btnResetAll").addEventListener("click",()=>{
+  if(!confirm("Reset studio? Clears saved brands, screens, and uploads, then reloads fresh presets.")) return;
+  try{ localStorage.removeItem("ploonu_screenshots_v3"); localStorage.removeItem("ploonu_screenshots_v2"); }catch(e){}
+  location.reload();
+});
 const lightbox=document.getElementById("lightbox");
 const lbCanvas=document.getElementById("lbCanvas");
 let lbReturnFocus=null;

@@ -72,5 +72,6 @@ assert.ok(src.includes("5244x2950") && src.includes("3840x1646"), "marketing hea
 assert.ok(src.includes("function drawHeader("), "landscape header renderer present");
 assert.ok(src.includes('data-size="__custom"'), "custom size entry present");
 assert.ok(src.includes("function paintCover("), "shared cover-fit helper present");
+assert.ok(src.includes('id="btnResetAll"'), "studio reset button present");
 
 console.log("studio-logic: all assertions passed");
