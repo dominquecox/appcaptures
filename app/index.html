@@ -315,6 +315,10 @@ function loadState(){
   brand.headlineColor = brand.headlineColor || "#0f172a";
   brand.headlineAlign = brand.headlineAlign || "center";
   if(!screens.length && APP_PRESETS[appId]) screens = JSON.parse(JSON.stringify(APP_PRESETS[appId].screens));
+  // sanitize persisted brand tones (6-digit hex) + drop dead blob: URLs
+  brand.primary = normHex(brand.primary, "#7c5cff");
+  brand.bg = normHex(brand.bg, "#0b0914");
+  screens.forEach(s=>{ if(typeof s.file === "string" && s.file.startsWith("blob:")) s.file = ""; });
 }
 function saveState(){
   // agnostic per-app: save current app into map, then persist map + current pointers to v3
@@ -324,6 +328,25 @@ function saveState(){
   localStorage.setItem("ploonu_screenshots_v2", JSON.stringify({appId, platform, exportSize, brand, screens}));
 }
 loadState();
+
+// shared guards: hex tones, filename slugs, selection bounds
+function normHex(v, fallback){
+  let s = String(v == null ? "" : v).trim();
+  if(!s.startsWith("#")) s = "#" + s;
+  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(s);
+  if(!m) return fallback;
+  let h = m[1];
+  if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return "#" + h.toLowerCase();
+}
+function slugFor(headline){
+  return String(headline || "").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,24) || "screen";
+}
+function clampSelected(){
+  if(selected >= screens.length) selected = Math.max(0, screens.length - 1);
+  if(selected < 0) selected = 0;
+  return selected;
+}
 
 const appSelect = document.getElementById("appSelect");
 const platformSelect = document.getElementById("platformSelect");
@@ -457,11 +480,11 @@ function onFile(e){
 
 // brand listeners
 brandName.addEventListener("input",e=>{ brand.name=e.target.value||"App"; document.getElementById("previewTitle").textContent=`Preview — ${brand.name} · ${platform}`; saveState(); schedulePreview();});
-function syncPrimary(v){ brand.primary=v; brandPrimary.value=v; brandPrimaryText.value=v; document.documentElement.style.setProperty("--primary", v); saveState(); schedulePreview();}
+function syncPrimary(v){ v=normHex(v,brand.primary); brand.primary=v; brandPrimary.value=v; brandPrimaryText.value=v; document.documentElement.style.setProperty("--primary", v); saveState(); schedulePreview();}
 brandPrimary.addEventListener("input",e=>syncPrimary(e.target.value));
 brandPrimaryText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; if(/^#[0-9a-fA-F]{6}$/.test(v)) syncPrimary(v); });
-brandBg.addEventListener("input",e=>{ brand.bg=e.target.value; brandBgText.value=e.target.value; document.documentElement.style.setProperty("--bg", e.target.value); document.body.style.background=e.target.value; document.querySelector(".header").style.background=e.target.value; saveState(); schedulePreview();});
-brandBgText.addEventListener("change",e=>{ let v=e.target.value.trim(); if(!v.startsWith("#")) v="#"+v; brand.bg=v; brandBg.value=v; document.documentElement.style.setProperty("--bg", v); saveState();});
+brandBg.addEventListener("input",e=>{ const v=normHex(e.target.value,brand.bg); brand.bg=v; brandBg.value=v; brandBgText.value=v; document.documentElement.style.setProperty("--bg", v); document.body.style.background=v; document.querySelector(".header").style.background=v; saveState(); schedulePreview();});
+brandBgText.addEventListener("change",e=>{ const v=normHex(e.target.value,brand.bg); brand.bg=v; brandBg.value=v; brandBgText.value=v; document.documentElement.style.setProperty("--bg", v); document.body.style.background=v; document.querySelector(".header").style.background=v; saveState(); schedulePreview();});
 brandFont.addEventListener("change",e=>{ brand.font=e.target.value; saveState(); renderStripOnly();});
 deviceFrame.addEventListener("change",e=>{ brand.frame=e.target.value; saveState(); renderStripOnly();});
 const headlineSize = document.getElementById("headlineSize");
@@ -495,7 +518,7 @@ appSelect.addEventListener("change",e=>{
   if(v==="custom"){
     const name=prompt("App name?","My App");
     if(!name) { appSelect.value=appId; return; }
-    const primary=prompt("Primary hex (#7c5cff)?","#7c5cff")||"#7c5cff";
+    const primary=normHex(prompt("Primary hex (#7c5cff)?","#7c5cff"),"#7c5cff");
     appId="custom";
     if(appStates[appId]){
       const st = appStates[appId]; brand = st.brand; screens = st.screens;
@@ -513,9 +536,8 @@ appSelect.addEventListener("change",e=>{
       brand = {name:p.name, primary:p.primary, bg:p.bg, font:"Hanken Grotesk", frame:"island", headlineSize:p.headlineSize, headlineWeight:p.headlineWeight, headlineColor:p.headlineColor, headlineAlign:p.headlineAlign};
       screens = JSON.parse(JSON.stringify(p.screens));
     }
-    selected=0;
   }
-  syncBrandUI(); buildSizeBtns(); saveState(); render();
+  selected=0; syncBrandUI(); buildSizeBtns(); saveState(); render();
 });
 platformSelect.addEventListener("change",e=>{ platform=e.target.value; buildSizeBtns(); saveState(); renderStripOnly();});
 
@@ -531,6 +553,7 @@ function loadImage(src){
   imageCache.set(src,p); return p;
 }
 async function drawCard(canvas, headline, src, W, H){
+  headline = headline || "Untitled";
   const ctx=canvas.getContext("2d");
   canvas.width=W; canvas.height=H;
   // bg
@@ -621,19 +644,20 @@ async function renderStripOnly(){
 async function render(){ buildLeft(); await renderStripOnly(); }
 function parseSize(s){return s.split("x").map(Number);}
 async function exportOne(index,W,H){
+  index = Math.max(0, Math.min(index, screens.length - 1));
   const s=screens[index];
   const c=document.createElement("canvas");
   await drawCard(c, s.headline, s.file, W, H);
-  const slug = s.headline.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,24) || "screen";
+  const slug = slugFor(s.headline);
   const name = `${String(index+1).padStart(2,"0")}_${slug}_${W}x${H}.png`;
   const a=document.createElement("a"); a.download=name; a.href=c.toDataURL("image/png"); a.click();
 }
 async function exportAll(W,H){ for(let i=0;i<screens.length;i++){ await exportOne(i,W,H); await new Promise(r=>setTimeout(r,260)); } }
-document.getElementById("btnExportAll").addEventListener("click",()=>{
-  const [W,H]=parseSize(exportSize); exportAll(W,H);
+document.getElementById("btnExportAll").addEventListener("click",async ()=>{
+  const [W,H]=parseSize(exportSize); await exportAll(W,H);
   if(platform==="both"){
     const other = PLATFORM_SIZES.android[0].value; const [w2,h2]=parseSize(other);
-    setTimeout(()=>exportAll(w2,h2), 800);
+    await exportAll(w2,h2);
   }
 });
 document.getElementById("btnExportAll2").addEventListener("click",()=>{ const [W,H]=parseSize(exportSize); exportAll(W,H); });
@@ -682,8 +706,8 @@ document.addEventListener("keydown",e=>{
     return;
   }
   if(typing) return;
-  if(e.key>="1"&&e.key<="9"){
-    const i=+e.key-1;
+  if((e.key>="1"&&e.key<="9")||e.key==="0"){
+    const i=e.key==="0"?9:+e.key-1;
     if(i<screens.length){ selected=i; render(); }
   } else if(e.key==="e"||e.key==="E"){ openLightbox(selected); }
 });
