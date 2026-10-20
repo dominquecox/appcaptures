@@ -1,0 +1,9 @@
+# Local dogfood + internals: kept in the repo, never served publicly.
+# The public site is the marketing waitlist only (landing, news, changelog).
+app/
+admin/
+docs/
+SPEC.md
+schema.sql
+wrangler.jsonc
+worker.js

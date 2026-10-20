@@ -1,7 +1,7 @@
 # Ploonu App Screenshots Studio — Spec
 
 **Location:** `vidiloopios/tools/screenshots/index.html` (35K) + `wrangler.jsonc`
-**Live (permanent, on your account):** `https://ploonu-screenshots.ploonu.workers.dev` — Version `5cb27555-c43d-41a4-8017-a7296c5757ee`
+**Live (permanent, on your account):** `https://appcaptures.ploonu.workers.dev` — Version `088a2269-6af8-472a-9359-67dc5c9e5ad6` (verified `200` + `AppCaptures — App Store Screenshot Studio` + `Headline — per app` present)
 **Permanent:** `npx wrangler login && npx wrangler deploy --config tools/screenshots/wrangler.jsonc` → `ploonu-screenshots.<account>.workers.dev` or `screenshots.vidiloop.com`
 **Local:** `python3 -m http.server 8347` in `tools/screenshots` → `http://localhost:8347` (also `http://100.88.25.84:8347` on mesh)
 
@@ -45,7 +45,10 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 ## 7. Verification
 - `command -v chromium; echo $?` → `1`, Chrome `155.0.8059.80` at `/Applications/Google Chrome.app` but headless `TargetClosedError` `pid 3134 SIGABRT` + `headless_shell 1228 SIGSEGV` due to sandbox — use `curl -s https://ploonu-screenshots… | grep` + `grep -c headlineSize` → `31` instead.
 - `npx wrangler deploy --dry-run --config tools/screenshots/wrangler.jsonc` → `Read 8 files`
-- Live `curl -s https://ploonu-screenshots.ploonu.workers.dev/` → `200`, `Headline — per app` → `1`, `Yaps` → `3` — permanent, verified.
+- Live `curl -s https://appcaptures.ploonu.workers.dev/` → `200`, title → `1`, `Headline — per app` → `1` — permanent, verified.
+
+## 8b. Landing + waitlist (`feat/landing-waitlist`, unmerged)
+Public face while the studio dogfoods locally: `/` landing (TypePress treatment — ice/navy/orange, hero, email capture ×2, features, how-it-works, news/changelog previews, waitlist band), studio moved untouched to `/app/`, `/news/` + `/changelog/` render `data/*.json`, `/admin/` super admin console (dogfood passcode `ploonu`, waitlist table + CSV, JSON editors → localStorage overrides). Waitlist `POST /api/waitlist` → D1 via `worker.js` + `schema.sql` (server position wins when present; falls back to `localStorage:appcaptures_waitlist` while `env.DB` is unbound). Mini-side: `wrangler d1 create appcaptures_db` → paste `[[d1_databases]]` block → `wrangler d1 execute appcaptures_db --file schema.sql` → deploy. Plan: `docs/plans/2026-10-19-landing-waitlist.md`.
 
 ## 8. How any engineer continues
 - Branch: `feat/screenshots-saas` from `vidiloopios` main
