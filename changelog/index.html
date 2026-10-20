@@ -36,9 +36,9 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 </head>
 <body>
-<header><div class="wrap"><nav><a class="brand" href="/">App<span style="color:var(--accent)">Captures</span></a><a href="/news/">News</a><a href="/changelog/">Changelog</a><a href="/app/">Studio</a></nav></div></header>
+<header><div class="wrap"><nav><a class="brand" href="/">App<span style="color:var(--accent)">Captures</span></a><a href="/news/">News</a><a href="/changelog/">Changelog</a></nav></div></header>
 <main class="wrap"><h1>Changelog</h1><div id="list"></div></main>
-<footer><div class="wrap">© 2026 AppCaptures · <a href="/">Home</a> · <a href="/admin/">Admin</a></div></footer>
+<footer><div class="wrap">© 2026 AppCaptures · <a href="/">Home</a></div></footer>
 <script>
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 fetch("/data/changelog.json").then(r=>r.json()).then(j=>{
