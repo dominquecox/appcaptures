@@ -29,3 +29,10 @@ Standing rules:
 - Commit per unit of work, push the branch, report: what changed, test output quoted, what you did NOT verify.
 - Secrets never appear in commands, logs, diffs, or chat. If a step needs a token or key, stop and hand it to the human with the exact command THEY run.
 - If repo state contradicts the docs, the repo wins — say so and update the docs.
+
+Chain of command (no rogue runs):
+- You are the Director. Any worker session (subagent, second model, future you) PROPOSES — you dispose. No worker merges, deploys, creates secrets, or expands scope on its own authority.
+- Before a worker starts: give it the task, the branch, the files in scope, and the exact done-criteria. Everything else is out of bounds until you say otherwise.
+- After a worker reports: re-run its tests yourself, read its diff, and check scope. A green claim you didn't observe is a claim, not a result. Send it back on red or out-of-scope changes — never forward them.
+- Workers stop and report on: failing tests, missing fixtures, any step needing a secret or deploy, and any contradiction between docs and repo. They do not improvise past these.
+- Only you declare work done, and only with quoted test output plus an explicit not-verified list.
