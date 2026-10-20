@@ -83,6 +83,14 @@ Full read of `app/index.html` (694 lines) found and fixed:
 - **Perf budget (static, sandbox can't run Lighthouse — runtime numbers need Mini):** public landing ~28KB HTML+JSON+icons (fonts external, deferred modules, SW-cached shell); studio ~55KB JS+HTML local-only. No render-blocking local JS, zero npm deps shipped.
 - **Security:** Turnstile shield env-gated on `feat/waitlist-shield`; D1 parameterized; no secrets in repo (swept).
 
+## 13. Roadmap (2026-10-20 — director-owned, in priority order)
+1. **Merge `integrate/v1.1` → `main`** (human sign-off): shield + QA + modules + SaaS shell, all suites green. Then deploy + wipe `example.com` D1 rows.
+2. **Turnstile keys:** dashboard widget + `wrangler secret put TURNSTILE_SECRET` + `cf-turnstile` divs + `body.turnstile` submit (or dashboard rate-limit rule as stopgap).
+3. **SaaS bindings:** R2/KV/queue/AI (Mini-side), uncomment roadmap block, apply `schema-saas.sql`, wire listing model.
+4. **Runtime proof (Mini/phone):** Lighthouse numbers, browser render pass, apex PWA install check.
+5. **Later:** full WCAG audit (44px targets), cloud Android emulation, templates + paywall.
+- Next build candidates live here; take the top unstarted item, branch off `main`, spec-first.
+
 ## 10. Local simulator capture (`tools/capture/sim-capture.sh`, `feat/studio-qa`)
 Snag screenshots from a Mac-local iOS Simulator (`xcrun simctl`, auto-boots newest iPhone when none booted) or Android emulator (`adb screencap`) into `captures/` — then pick them via any Upload slot in the studio. `list` shows booted sims + adb devices with clean no-device errors. Excluded from deploys via `.assetsignore`. Verdict on SaaS sims: local capture = build it (this script); cloud iOS sims need Mac hardware per hour — off the roadmap until revenue; cloud Android emulation (Linux/KVM) is the feasible later play.
 
