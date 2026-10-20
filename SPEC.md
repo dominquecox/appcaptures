@@ -22,7 +22,7 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 - **Headline — per app:** Size slider `32–72` (default `50` → `fontSize = W * (headlineSize/1320)`), Weight `500/600/700/800`, Color picker, Align `center / left` (`left` uses `W*0.07` inset). Canvas: `font = weight + size + font`, `fillStyle = headlineColor`, `textAlign = align`.
 
 ## 3. Screens — per app
-1–10 screens, each headline 3–6 words + image (upload or Vidiloop `designassets/*` preset). Vidiloop preset 8 screens `Welcome to Vidiloop` … `Never miss a loop`; Yaps 5 `Speak your mind` … `Join the conversation`; TypePress 5 `Write without limits` … Add/duplicate/remove, tap card to edit. Duplicate uses `JSON.parse(JSON.stringify(screens[i]))`.
+1–10 screens, each headline 3–6 words + image (upload or Vidiloop `app/presets/vidiloop/*` — real 1284×2778 captures from `~/Desktop/AppStoreSubmission/`). Vidiloop preset 8 screens `Welcome to Vidiloop` … `Go further with Plus` (onboarding, feed, capture, trim, discover, profile Top 8, notifications, paywall); Yaps 5 `Speak your mind` … `Join the conversation`; TypePress 5 `Write without limits` … Add/duplicate/remove, tap card to edit. Duplicate uses `JSON.parse(JSON.stringify(screens[i]))`.
 
 ## 4. Platform & Sizes
 - **iOS App Store:** `1320×2868` (6.9"), `1290×2796` (6.7"), `1284×2778` (6.5"), `1206×2622` (6.1"), `2064×2752` (iPad 13")
