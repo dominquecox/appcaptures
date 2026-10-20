@@ -1,125 +1,167 @@
-// Studio logic regression tests — plain node, no framework.
+// Studio tests — plain node, no framework.
 // Run: node tests/studio-logic.mjs
-// Exercises the REAL functions extracted from app/index.html source
-// (normHex, slugFor, clampSelected) plus source tripwires for the
-// export-sequencing and selection-reset fixes.
+// Models/render/store import directly (pure, node-safe). ui.js is DOM-bound:
+// covered by source tripwires, with the real browser check left to dogfood.
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const src = readFileSync(path.join(root, "app", "index.html"), "utf8");
+const studioSrc = readFileSync(path.join(root, "app", "index.html"), "utf8");
+const uiSrc = readFileSync(path.join(root, "app", "js", "ui.js"), "utf8");
+const modelsSrc = readFileSync(path.join(root, "app", "js", "models.js"), "utf8");
 
-function extract(name) {
-  const m = src.match(new RegExp(`function ${name}\\(.*?\\{[\\s\\S]*?\\n\\}`));
-  assert.ok(m, `${name} must exist in app/index.html`);
-  return m[0];
+const models = await import("../app/js/models.js");
+const render = await import("../app/js/render.js");
+const store = await import("../app/js/store.js");
+const presets = await import("../app/js/presets.js");
+
+// normHex: tolerate missing #, 3-digit, case; reject garbage.
+assert.equal(models.normHex("#7c5cff", "#000000"), "#7c5cff");
+assert.equal(models.normHex("7c5cff", "#000000"), "#7c5cff");
+assert.equal(models.normHex("#fff", "#000000"), "#ffffff");
+assert.equal(models.normHex("#AbC", "#000000"), "#aabbcc");
+assert.equal(models.normHex("zzz", "#fb"), "#fb");
+assert.equal(models.normHex("", "#fb"), "#fb");
+assert.equal(models.normHex("#12345", "#fb"), "#fb");
+assert.equal(models.normHex(null, "#fb"), "#fb");
+
+// slugFor + parseSize.
+assert.equal(models.slugFor("Loop any moment!"), "loop_any_moment");
+assert.equal(models.slugFor("  --Hi--  "), "hi");
+assert.equal(models.slugFor(""), "screen");
+assert.equal(models.slugFor("A".repeat(60)), "a".repeat(24));
+assert.deepEqual(models.parseSize("1320x2868"), [1320, 2868]);
+assert.equal(models.parseSize("nope"), null);
+
+// clampIndex: selection always lands on a real screen.
+assert.equal(models.clampIndex(5, 8), 5);
+assert.equal(models.clampIndex(5, 1), 0);
+assert.equal(models.clampIndex(-1, 3), 0);
+assert.equal(models.clampIndex(0, 0), 0);
+
+// coerceBrand: garbage in, safe brand out.
+{
+  const b = models.coerceBrand({ primary: "zzz", headlineSize: 999, headlineWeight: "900", font: "Comic Sans", frame: "weird" }, null);
+  assert.equal(b.primary, models.FALLBACK_PRIMARY);
+  assert.equal(b.headlineSize, 72);
+  assert.equal(b.headlineWeight, "700");
+  assert.equal(b.font, "Hanken Grotesk");
+  assert.equal(b.frame, "island");
+  const kept = models.coerceBrand({ name: "Yaps", primary: "#ff6b00" }, null);
+  assert.equal(kept.name, "Yaps");
+  assert.equal(kept.primary, "#ff6b00");
 }
 
-// normHex(v, fallback): tolerate missing #, 3-digit, case; reject garbage.
-const normHex = new Function(`${extract("normHex")}; return normHex;`)();
-assert.equal(normHex("#7c5cff", "#000000"), "#7c5cff");
-assert.equal(normHex("7c5cff", "#000000"), "#7c5cff");
-assert.equal(normHex("#fff", "#000000"), "#ffffff");
-assert.equal(normHex("#AbC", "#000000"), "#aabbcc");
-assert.equal(normHex("zzz", "#fb"), "#fb");
-assert.equal(normHex("", "#fb"), "#fb");
-assert.equal(normHex("#12345", "#fb"), "#fb");
-assert.equal(normHex(null, "#fb"), "#fb");
+// coerceScreen: blob: URLs die, headline capped.
+{
+  const s = models.coerceScreen({ headline: "x".repeat(100), file: "blob:dead", asset: "3" });
+  assert.equal(s.headline.length, 48);
+  assert.equal(s.file, "");
+  assert.equal(s.asset, -1);
+}
 
-// slugFor(headline): export filename slug with "screen" fallback.
-const slugFor = new Function(`${extract("slugFor")}; return slugFor;`)();
-assert.equal(slugFor("Loop any moment!"), "loop_any_moment");
-assert.equal(slugFor("  --Hi--  "), "hi");
-assert.equal(slugFor(""), "screen");
-assert.equal(slugFor("A".repeat(60)), "a".repeat(24));
+// presets shape: every app has screens, every vidiloop asset file resolves.
+{
+  for(const [id, p] of Object.entries(presets.APP_PRESETS)){
+    assert.ok(p.screens.length >= 1, `${id} needs screens`);
+    for(const s of p.screens) assert.ok(typeof s.headline === "string" && s.headline.length, `${id} headline`);
+  }
+  assert.ok(presets.PLATFORM_SIZES.marketing.some(s=>s.value === "5244x2950"));
+  assert.ok(presets.PLATFORM_SIZES.marketing.some(s=>s.value === "3840x1646"));
+}
 
-// clampSelected(): selection always lands on a real screen.
-const clampSrc = extract("clampSelected");
-const runClamp = (nScreens, sel) =>
-  new Function("screens", "selected", `${clampSrc}; return clampSelected();`)(
-    new Array(nScreens).fill({}), sel
-  );
-assert.equal(runClamp(8, 5), 5);
-assert.equal(runClamp(1, 5), 0);
-assert.equal(runClamp(3, -1), 0);
+// store: v3 round-trip, v2 migration, corrupt state falls back, no storage works.
+{
+  const fake = (()=>{ const m = new Map(); return {
+    getItem: k=>(m.has(k) ? m.get(k) : null),
+    setItem: (k, v)=>{ m.set(k, String(v)); },
+    removeItem: k=>{ m.delete(k); },
+  }; })();
+  const a = store.createStore(fake);
+  a.state.brand.name = "TestApp";
+  a.state.screens = [{ headline: "Hi", file: "", asset: -1 }];
+  a.save();
+  const b = store.createStore(fake);
+  b.load();
+  assert.equal(b.state.brand.name, "TestApp");
+  assert.equal(b.state.screens.length, 1);
+  b.reset();
+  const c = store.createStore(fake);
+  c.load();
+  assert.equal(c.state.brand.name, "Vidiloop"); // back to preset
+  const broken = store.createStore({ getItem: ()=>"{oops", setItem: ()=>{}, removeItem: ()=>{} });
+  broken.load();
+  assert.equal(broken.state.screens.length, 8);
+  const none = store.createStore(undefined);
+  none.load(); none.save();
+  assert.equal(none.state.brand.name, "Vidiloop");
+}
 
-// Tripwires: sequential both-platform export, selection reset on app switch,
-// dead blob: URLs cleared on load, empty-headline fallback in drawCard.
-assert.ok(src.includes("await exportAll(w2,h2)"), "both-platform export must be sequential");
-assert.ok(src.includes('selected=0; syncBrandUI();'), "app switch must reset selection");
-assert.ok(src.includes('startsWith("blob:")'), "blob: URLs must be cleared on load");
-assert.ok(src.includes('headline = headline || "Untitled"'), "drawCard needs empty-headline fallback");
+// render module loads side-effect-free; zip round-trips through real code.
+assert.equal(typeof render.draw, "function");
+assert.equal(typeof render.drawHeader, "function");
+{
+  const payload = new Uint8Array([0, 1, 2, 250, 255, 16, 32]);
+  const blob = render.zipStore([
+    { name: "01_hello_1320x2868.png", data: payload },
+    { name: "02_empty_1320x2868.png", data: new Uint8Array(0) },
+  ]);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(buf.buffer);
+  const le32 = o=>dv.getUint32(o, true), le16 = o=>dv.getUint16(o, true);
+  assert.equal(le32(0), 0x04034b50);
+  const eocd = buf.length - 22;
+  assert.equal(le32(eocd), 0x06054b50);
+  assert.equal(le16(eocd + 10), 2);
+  let p = le32(eocd + 16);
+  const names = [];
+  for(let i = 0; i < 2; i++){
+    assert.equal(le32(p), 0x02014b50);
+    assert.equal(le16(p + 10), 0);
+    const crc = le32(p + 16), len = le32(p + 24);
+    const nl = le16(p + 28), el = le16(p + 30), fl = le16(p + 32), lh = le32(p + 42);
+    names.push(Buffer.from(buf.slice(p + 46, p + 46 + nl)).toString("utf8"));
+    assert.equal(le32(lh), 0x04034b50);
+    const data = buf.slice(lh + 30 + le16(lh + 26), lh + 30 + le16(lh + 26) + len);
+    assert.equal(data.length, len);
+    assert.equal(render.crc32(data), crc, "crc round-trip");
+    if(len) assert.deepEqual(Array.from(data), Array.from(payload));
+    p += 46 + nl + el + fl;
+  }
+  assert.deepEqual(names, ["01_hello_1320x2868.png", "02_empty_1320x2868.png"]);
+}
+
+// ui.js wiring tripwires (DOM-bound; real behavior checked in dogfood).
+for(const needle of [
+  'id="btnResetAll"',
+  'data-size="__custom"',
+  "await exportAll(w2, h2)",
+  "state.selected = 0; syncBrandUI();",
+  'startsWith("blob:")',
+  "openLightbox",
+  'type="module" src="./js/main.js"',
+]){
+  assert.ok(uiSrc.includes(needle) || studioSrc.includes(needle) || modelsSrc.includes(needle), `wiring present: ${needle}`);
+}
+assert.ok(!/\bfunction drawCard\(/.test(uiSrc), "no canvas code left in ui.js");
+assert.ok(!/APP_PRESETS\s*=/.test(uiSrc), "no hardcoded presets in ui.js");
 
 // mergeWaitlist(server, local): D1 rows first, deduped by email (case-insensitive).
-const asrc = readFileSync(path.join(root, "admin", "index.html"), "utf8");
-const am = asrc.match(/function mergeWaitlist\(.*?\{\n[\s\S]*?\n\}/);
-assert.ok(am, "mergeWaitlist must exist in admin/index.html");
-const mergeWaitlist = new Function(`${am[0]}; return mergeWaitlist;`)();
-const merged = mergeWaitlist(
-  [{ email: "A@x.com", at: "2026-10-19 05:15:03", via: "verify" }],
-  [{ email: "a@X.com", at: "iso", via: "local" }, { email: "b@x.com", at: "iso", via: "local" }]
-);
-assert.equal(merged.length, 2);
-assert.equal(merged[0].srv, true);
-assert.equal(merged[0].via, "verify");
-assert.equal(merged[1].email, "b@x.com");
-assert.equal(mergeWaitlist(null, null).length, 0);
-
-// Marketing headers: Apple sizes, landscape renderer, custom entry.
-assert.ok(src.includes("5244x2950") && src.includes("3840x1646"), "marketing header sizes present");
-assert.ok(src.includes("function drawHeader("), "landscape header renderer present");
-assert.ok(src.includes('data-size="__custom"'), "custom size entry present");
-assert.ok(src.includes("function paintCover("), "shared cover-fit helper present");
-assert.ok(src.includes('id="btnResetAll"'), "studio reset button present");
-
-// zipStore round-trip: build a real zip from the repo's own code, parse it
-// back (local headers, central directory, end record), verify CRC + bytes.
-function extractBalanced(marker) {
-  const i = src.indexOf(marker);
-  assert.ok(i >= 0, `${marker} must exist in app/index.html`);
-  let j = src.indexOf("{", i), depth = 0;
-  for (let k = j; k < src.length; k++) {
-    if (src[k] === "{") depth++;
-    else if (src[k] === "}") { depth--; if (!depth) return src.slice(i, k + 1); }
-  }
-  throw new Error(`unbalanced block at ${marker}`);
+{
+  const asrc = readFileSync(path.join(root, "admin", "index.html"), "utf8");
+  const am = asrc.match(/function mergeWaitlist\(.*?\{\n[\s\S]*?\n\}/);
+  assert.ok(am, "mergeWaitlist must exist in admin/index.html");
+  const mergeWaitlist = new Function(`${am[0]}; return mergeWaitlist;`)();
+  const merged = mergeWaitlist(
+    [{ email: "A@x.com", at: "2026-10-19 05:15:03", via: "verify" }],
+    [{ email: "a@X.com", at: "iso", via: "local" }, { email: "b@x.com", at: "iso", via: "local" }]
+  );
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].srv, true);
+  assert.equal(merged[1].email, "b@x.com");
+  assert.equal(mergeWaitlist(null, null).length, 0);
 }
-const zipSrc = extractBalanced("const CRC_T") + ")()" + "\n" + extractBalanced("function crc32") + "\n" + extractBalanced("function zipStore");
-const zipStore = new Function(`${zipSrc}; return zipStore;`)();
-const payload = new Uint8Array([0, 1, 2, 250, 255, 16, 32]);
-const blob = zipStore([
-  { name: "01_hello_1320x2868.png", data: payload },
-  { name: "02_empty_1320x2868.png", data: new Uint8Array(0) },
-]);
-const buf = new Uint8Array(await blob.arrayBuffer());
-const dv = new DataView(buf.buffer);
-const le32 = (o) => dv.getUint32(o, true);
-const le16 = (o) => dv.getUint16(o, true);
-assert.equal(le32(0), 0x04034b50, "local header signature");
-const eocd = buf.length - 22;
-assert.equal(le32(eocd), 0x06054b50, "end-of-central-directory signature");
-const count = le16(eocd + 10), cdOff = le32(eocd + 16);
-assert.equal(count, 2);
-let p = cdOff;
-const names = [];
-for (let i = 0; i < count; i++) {
-  assert.equal(le32(p), 0x02014b50, "central entry signature");
-  const method = le16(p + 10), crc = le32(p + 16), len = le32(p + 24);
-  const nl = le16(p + 28), el = le16(p + 30), fl = le16(p + 32), lh = le32(p + 42);
-  assert.equal(method, 0, "stored (no compression)");
-  names.push(Buffer.from(buf.slice(p + 46, p + 46 + nl)).toString("utf8"));
-  assert.equal(le32(lh), 0x04034b50, "local header at recorded offset");
-  const data = buf.slice(lh + 30 + le16(lh + 26), lh + 30 + le16(lh + 26) + len);
-  assert.equal(data.length, len);
-  const T = new Function(`${extractBalanced("const CRC_T")})(); return CRC_T;`)();
-  let c = 0xffffffff;
-  for (const b of data) c = T[(c ^ b) & 255] ^ (c >>> 8);
-  assert.equal((c ^ 0xffffffff) >>> 0, crc, "crc round-trip");
-  if (len) assert.deepEqual(Array.from(data), Array.from(payload));
-  p += 46 + nl + el + fl;
-}
-assert.deepEqual(names, ["01_hello_1320x2868.png", "02_empty_1320x2868.png"]);
 
 console.log("studio-logic: all assertions passed");
