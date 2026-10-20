@@ -55,6 +55,36 @@ export default {
       ).all();
       return json({ items: results || [] });
     }
+    if (url.pathname === "/api/health" && req.method === "GET") {
+      return json({ ok: true, version: 1, db: !!env.DB, ai: !!env.AI, queue: !!env.EXPORT_QUEUE });
+    }
+    if (url.pathname === "/api/listing/generate" && req.method === "POST") {
+      let body = {};
+      try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
+      const appId = String(body.appId || "").trim().slice(0, 40);
+      const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : null;
+      const locale = String(body.locale || "en-US");
+      if (!appId || !shots || !/^[a-z]{2}(-[A-Z]{2})?$/.test(locale)) {
+        return json({ error: "need appId, screenshots[<=10], locale" }, 400);
+      }
+      // Model wiring lands with the AI binding (Workers AI -> Gemini -> BYO via AI Gateway).
+      if (!env.AI) return json({ ok: false, error: "ai not configured" }, 501);
+      return json({ ok: false, error: "not implemented" }, 501);
+    }
+    if (url.pathname === "/api/exports" && req.method === "POST") {
+      let body = {};
+      try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
+      const appId = String(body.appId || "").trim().slice(0, 40);
+      const size = String(body.size || "");
+      const n = Array.isArray(body.screens) ? body.screens.length : 0;
+      if (!appId || !/^\d+x\d+$/.test(size) || n < 1 || n > 10) {
+        return json({ error: "need appId, size WxH, screens[1..10]" }, 400);
+      }
+      if (!env.EXPORT_QUEUE) return json({ ok: false, error: "export queue not configured" }, 501);
+      const id = crypto.randomUUID();
+      await env.EXPORT_QUEUE.send({ id, appId, size, screens: n, at: Date.now() });
+      return json({ ok: true, id, status: "queued" });
+    }
     return json({ error: "not found" }, 404);
   },
 };
