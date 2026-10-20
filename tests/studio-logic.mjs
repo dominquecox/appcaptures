@@ -74,4 +74,52 @@ assert.ok(src.includes('data-size="__custom"'), "custom size entry present");
 assert.ok(src.includes("function paintCover("), "shared cover-fit helper present");
 assert.ok(src.includes('id="btnResetAll"'), "studio reset button present");
 
+// zipStore round-trip: build a real zip from the repo's own code, parse it
+// back (local headers, central directory, end record), verify CRC + bytes.
+function extractBalanced(marker) {
+  const i = src.indexOf(marker);
+  assert.ok(i >= 0, `${marker} must exist in app/index.html`);
+  let j = src.indexOf("{", i), depth = 0;
+  for (let k = j; k < src.length; k++) {
+    if (src[k] === "{") depth++;
+    else if (src[k] === "}") { depth--; if (!depth) return src.slice(i, k + 1); }
+  }
+  throw new Error(`unbalanced block at ${marker}`);
+}
+const zipSrc = extractBalanced("const CRC_T") + ")()" + "\n" + extractBalanced("function crc32") + "\n" + extractBalanced("function zipStore");
+const zipStore = new Function(`${zipSrc}; return zipStore;`)();
+const payload = new Uint8Array([0, 1, 2, 250, 255, 16, 32]);
+const blob = zipStore([
+  { name: "01_hello_1320x2868.png", data: payload },
+  { name: "02_empty_1320x2868.png", data: new Uint8Array(0) },
+]);
+const buf = new Uint8Array(await blob.arrayBuffer());
+const dv = new DataView(buf.buffer);
+const le32 = (o) => dv.getUint32(o, true);
+const le16 = (o) => dv.getUint16(o, true);
+assert.equal(le32(0), 0x04034b50, "local header signature");
+const eocd = buf.length - 22;
+assert.equal(le32(eocd), 0x06054b50, "end-of-central-directory signature");
+const count = le16(eocd + 10), cdOff = le32(eocd + 16);
+assert.equal(count, 2);
+let p = cdOff;
+const names = [];
+for (let i = 0; i < count; i++) {
+  assert.equal(le32(p), 0x02014b50, "central entry signature");
+  const method = le16(p + 10), crc = le32(p + 16), len = le32(p + 24);
+  const nl = le16(p + 28), el = le16(p + 30), fl = le16(p + 32), lh = le32(p + 42);
+  assert.equal(method, 0, "stored (no compression)");
+  names.push(Buffer.from(buf.slice(p + 46, p + 46 + nl)).toString("utf8"));
+  assert.equal(le32(lh), 0x04034b50, "local header at recorded offset");
+  const data = buf.slice(lh + 30 + le16(lh + 26), lh + 30 + le16(lh + 26) + len);
+  assert.equal(data.length, len);
+  const T = new Function(`${extractBalanced("const CRC_T")})(); return CRC_T;`)();
+  let c = 0xffffffff;
+  for (const b of data) c = T[(c ^ b) & 255] ^ (c >>> 8);
+  assert.equal((c ^ 0xffffffff) >>> 0, crc, "crc round-trip");
+  if (len) assert.deepEqual(Array.from(data), Array.from(payload));
+  p += 46 + nl + el + fl;
+}
+assert.deepEqual(names, ["01_hello_1320x2868.png", "02_empty_1320x2868.png"]);
+
 console.log("studio-logic: all assertions passed");
