@@ -28,6 +28,12 @@ export const PLATFORM_SIZES = {
   marketing: [
     {value:"5244x2950", label:"5244×2950", note:"Header 16:9"},
     {value:"3840x1646", label:"3840×1646", note:"Header wide"},
+  ],
+  duo: [
+    {value:"1398x2034", label:"1398×2034", note:"Duo outer"},
+    {value:"2007x2853", label:"2007×2853", note:"Duo inner"},
+    {value:"2034x1398", label:"2034×1398", note:"Duo outer land"},
+    {value:"2853x2007", label:"2853×2007", note:"Duo inner land"},
   ]
 };
 

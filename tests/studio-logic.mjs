@@ -70,6 +70,8 @@ assert.equal(models.clampIndex(0, 0), 0);
   }
   assert.ok(presets.PLATFORM_SIZES.marketing.some(s=>s.value === "5244x2950"));
   assert.ok(presets.PLATFORM_SIZES.marketing.some(s=>s.value === "3840x1646"));
+  for(const v of ["1398x2034", "2007x2853", "2034x1398", "2853x2007"])
+    assert.ok(presets.PLATFORM_SIZES.duo.some(s=>s.value === v), `duo size ${v}`);
 }
 
 // store: v3 round-trip, v2 migration, corrupt state falls back, no storage works.
@@ -141,6 +143,8 @@ for(const needle of [
   "state.selected = 0; syncBrandUI();",
   'startsWith("blob:")',
   "openLightbox",
+  "shiftKey",
+  "iPhone Duo",
   'type="module" src="./js/main.js"',
 ]){
   assert.ok(uiSrc.includes(needle) || studioSrc.includes(needle) || modelsSrc.includes(needle), `wiring present: ${needle}`);

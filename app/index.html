@@ -23,7 +23,7 @@ a{color:var(--primary)}
 .header h1 span{font-weight:600;color:#9aa3b8}
 .header .sub{color:#9aa3b8;font-size:11px;margin-top:3px;line-height:1.4}
 .controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
-.btn{appearance:none;border:1px solid #2a2450;background:#161329;color:#e5e7eb;padding:8px 11px;border-radius:9px;font-weight:700;font-size:12px;cursor:pointer}
+.btn{appearance:none;border:1px solid #2a2450;background:#161329;color:#e5e7eb;padding:10px 13px;border-radius:9px;font-weight:700;font-size:12px;cursor:pointer;min-height:36px}
 .btn:hover{border-color:#3a2f6a}
 .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
 .btn.primary:hover{background:var(--primary-2)}
@@ -47,28 +47,28 @@ a{color:var(--primary)}
 .label{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#9aa3b8;font-weight:700;display:block;margin-bottom:4px}
 .card-editor{background:#161329;border:1px solid #2a2450;border-radius:12px;padding:9px;margin-bottom:8px}
 .card-editor.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(124,92,255,.18)}
-.card-editor .mini{font-size:11px;padding:6px 8px;border-radius:8px;border:1px solid #2a2450;background:var(--bg);color:#cbd5e1;cursor:pointer;font-weight:700}
+.card-editor .mini{font-size:11px;padding:8px 10px;border-radius:8px;border:1px solid #2a2450;background:var(--bg);color:#cbd5e1;cursor:pointer;font-weight:700;min-height:32px}
 .card-editor .mini:hover{border-color:var(--primary);color:#fff}
 .preview-area{background:#000;padding:14px 14px 22px;overflow:auto}
 .preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .preview-head h2{margin:0;color:#e5e7eb;font-size:12px;font-weight:800;letter-spacing:-0.01em}
-.preview-head p{margin:0;color:#64748b;font-size:11px}
+.preview-head p{margin:0;color:#94a3b8;font-size:11px}
 .sizes{display:flex;gap:5px;flex-wrap:wrap}
-.size-btn{font-size:10px;padding:5px 9px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#9aa3b8;cursor:pointer;font-weight:700}
+.size-btn{font-size:10px;padding:8px 12px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#9aa3b8;cursor:pointer;font-weight:700;min-height:32px}
 .size-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .strip{display:flex;gap:12px;overflow:auto;padding:8px 4px 12px;scroll-snap-type:x mandatory}
 .screen-wrap{flex:0 0 auto;scroll-snap-align:start;display:flex;flex-direction:column;gap:6px;align-items:center}
-.screen-wrap .lab{font-size:10px;color:#64748b;font-weight:700;letter-spacing:.02em;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen-wrap .lab{font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:.02em;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .screen-frame{width:190px;height:412px;background:#fff;border-radius:16px;overflow:hidden;position:relative;box-shadow:0 8px 28px rgba(0,0,0,.45);border:3px solid rgba(124,92,255,.28);cursor:pointer}
 .screen-frame.selected{border-color:var(--primary);box-shadow:0 0 0 3px rgba(124,92,255,.34), 0 8px 28px rgba(0,0,0,.45)}
 .screen-frame canvas{width:100%;height:100%;display:block}
 .export-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.note{color:#64748b;font-size:10.5px;line-height:1.5;margin-top:10px;border:1px solid var(--line);background:#0e0e0f;padding:9px 10px;border-radius:10px}
+.note{color:#94a3b8;font-size:10.5px;line-height:1.5;margin-top:10px;border:1px solid var(--line);background:#0e0e0f;padding:9px 10px;border-radius:10px}
 .pill{font-size:10px;padding:4px 8px;border-radius:999px;background:#161329;border:1px solid #2a2450;color:#9aa3b8}
-.screen-frame .zoom{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:999px;border:1px solid #2a2450;background:rgba(11,9,20,.72);color:#e5e7eb;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
+.screen-frame .zoom{position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:999px;border:1px solid #2a2450;background:rgba(11,9,20,.72);color:#e5e7eb;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
 .screen-wrap .screen-frame:hover .zoom,.screen-frame:focus-within .zoom{opacity:1}
 @media (hover:none){.screen-frame .zoom{opacity:1}}
-.screen-frame .zoom svg{width:14px;height:14px}
+.screen-frame .zoom svg{width:16px;height:16px}
 button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 #lightbox{position:fixed;inset:0;z-index:60}
 #lightbox[hidden]{display:none}
@@ -78,7 +78,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
 .lb-cap{display:flex;gap:8px;align-items:center;color:#e5e7eb;font-size:12px;font-weight:700}
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#fff;font-size:18px;line-height:1;cursor:pointer}
 #lbPrev{left:14px}#lbNext{right:14px}
-#lbClose{position:absolute;top:14px;right:14px;min-width:34px;height:30px;border-radius:9px;border:1px solid #2a2450;background:#161329;color:#fff;cursor:pointer;font-size:13px}
+#lbClose{position:absolute;top:14px;right:14px;min-width:36px;height:36px;border-radius:9px;border:1px solid #2a2450;background:#161329;color:#fff;cursor:pointer;font-size:13px}
 </style>
 </head>
 <body>
@@ -101,6 +101,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
       <option value="android">Google Play</option>
       <option value="both">Both</option>
       <option value="marketing">Marketing headers</option>
+      <option value="duo">iPhone Duo</option>
     </select></div>
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
     <button class="btn" id="btnSave">Save</button>

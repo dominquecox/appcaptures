@@ -71,7 +71,7 @@ function buildSizeBtns(){
   }));
   syncSizeBadge();
   const p = state.platform;
-  const platLabel = p === "ios" ? "iOS" : p === "android" ? "Android" : p === "marketing" ? "Marketing" : "iOS + Android";
+  const platLabel = p === "ios" ? "iOS" : p === "android" ? "Android" : p === "marketing" ? "Marketing" : p === "duo" ? "iPhone Duo" : "iOS + Android";
   document.getElementById("previewTitle").textContent = `Preview — ${state.brand.name} · ${platLabel}`;
 }
 function addCustomSize(){
@@ -84,7 +84,7 @@ function addCustomSize(){
   syncSizeBadge(); renderStripOnly(); save(); buildSizeBtns();
 }
 function syncSizeBadge(){
-  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android, ...PLATFORM_SIZES.marketing, ...CUSTOM_SIZES];
+  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android, ...PLATFORM_SIZES.marketing, ...PLATFORM_SIZES.duo, ...CUSTOM_SIZES];
   const f = all.find(s=>s.value === state.exportSize);
   document.getElementById("sizeBadge").textContent = state.exportSize.replace("x", " × ") + (f ? ` · ${f.note}` : "");
 }
@@ -378,6 +378,12 @@ document.addEventListener("keydown", e=>{
     if(e.key === "Escape") closeLightbox();
     else if(e.key === "ArrowLeft") stepLightbox(-1);
     else if(e.key === "ArrowRight") stepLightbox(1);
+    else if(e.key === "Tab"){
+      const ids = ["lbClose", "lbPrev", "lbNext"].map(id=>document.getElementById(id));
+      const first = ids[0], last = ids[ids.length - 1];
+      if(e.shiftKey && document.activeElement === first){ last.focus(); e.preventDefault(); }
+      else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
+    }
     return;
   }
   if(typing) return;
