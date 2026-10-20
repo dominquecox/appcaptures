@@ -23,12 +23,12 @@
 :root{--paper:#f4f6f7;--ink:#101330;--muted:#5b6072;--line:#dfe4ea;--accent:#ff6b00;--card:#ffffff;--violet:#7c5cff}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-html,body{margin:0}
+html,body{margin:0;overflow-x:clip}
 body{background:var(--paper);color:var(--ink);font:15px/1.6 Inter,ui-sans-system,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit}
 .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
 header.site{position:sticky;top:0;z-index:20;background:rgba(244,246,247,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.nav{display:flex;align-items:center;gap:22px;height:60px}
+.nav{display:flex;align-items:center;gap:8px 22px;min-height:60px;flex-wrap:wrap;padding:10px 0}
 .brand{font:800 17px "Hanken Grotesk",Inter,sans-serif;letter-spacing:-.02em;text-decoration:none}
 .brand span{color:var(--accent)}
 .nav nav{display:flex;gap:18px;margin-left:8px}
@@ -98,6 +98,15 @@ footer.site{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--mut
 footer.site .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 footer.site a{font-weight:600}
 footer.site .right{margin-left:auto}
+@media(max-width:640px){
+.nav nav{display:none}
+.hero{padding:40px 0 36px}
+section.block{padding:36px 0}
+.band{padding:26px 20px}
+.capture{flex-direction:column}
+.capture .btn{width:100%}
+footer.site .right{margin-left:0}
+}
 </style>
 </head>
 <body>
