@@ -71,3 +71,6 @@ Full read of `app/index.html` (694 lines) found and fixed:
 - Regression net: `node tests/studio-logic.mjs` extracts the real `normHex`/`slugFor`/`clampSelected` from source and asserts behavior + tripwires for the sequencing/selection fixes.
 - NOT verified here: real-browser render (headless Chrome crashes in sandbox), apex reachability from sandbox proxy — both need eyes/browsers outside the sandbox.
 
+## 10. Local simulator capture (`tools/capture/sim-capture.sh`, `feat/studio-qa`)
+Snag screenshots from a Mac-local iOS Simulator (`xcrun simctl`, auto-boots newest iPhone when none booted) or Android emulator (`adb screencap`) into `captures/` — then pick them via any Upload slot in the studio. `list` shows booted sims + adb devices with clean no-device errors. Excluded from deploys via `.assetsignore`. Verdict on SaaS sims: local capture = build it (this script); cloud iOS sims need Mac hardware per hour — off the roadmap until revenue; cloud Android emulation (Linux/KVM) is the feasible later play.
+
