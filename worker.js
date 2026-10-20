@@ -9,6 +9,20 @@ function json(data, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+// Optional bot shield: when env.TURNSTILE_SECRET is set, POST /api/waitlist
+// requires a valid Turnstile token and fails closed. Unset = current open
+// behavior (dogfood). Keys stay in the dashboard/secret store, never here.
+// Widget + action/hostname pinning land with the frontend sitekey.
+async function verifyTurnstile(secret, token, ip){
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ secret, response: token, remoteip: ip || "" }),
+  });
+  if(!r.ok) throw new Error("siteverify " + r.status);
+  return r.json();
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -18,6 +32,14 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      if (env.TURNSTILE_SECRET) {
+        const token = String(body.turnstile || "");
+        if (!token || token.length > 2048) return json({ error: "forbidden" }, 403);
+        let v;
+        try { v = await verifyTurnstile(env.TURNSTILE_SECRET, token, req.headers.get("CF-Connecting-IP")); }
+        catch (e) { return json({ error: "forbidden" }, 403); }
+        if (!v || v.success !== true) return json({ error: "forbidden" }, 403);
+      }
       try {
         await env.DB.prepare(
           "INSERT INTO waitlist (email, platform, source) VALUES (?,?,?)"
