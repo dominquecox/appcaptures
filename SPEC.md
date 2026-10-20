@@ -27,7 +27,9 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 ## 4. Platform & Sizes
 - **iOS App Store:** `1320×2868` (6.9"), `1290×2796` (6.7"), `1284×2778` (6.5"), `1206×2622` (6.1"), `2064×2752` (iPad 13")
 - **Android Play:** `1080×1920`, `1440×2560`, `1080×2400`, `1440×3120`
-- Toggle `iOS / Android / Both` → size buttons swap; `Both` exports all iOS then Android.
+- **Marketing headers (New Ways to Market Apps):** `5244×2950` (Header 16:9), `3840×1646` (Header wide) — landscape renderer `drawHeader` (headline left, device right sized by height, ≤3 lines). iPhone Duo exact pixels TBD — use the Custom… size button until Apple confirms.
+- **Custom…** size button: any `WIDTHxHEIGHT` 100–6000 (session-only, covers unlisted devices like Duo today).
+- Toggle `iOS / Android / Both / Marketing` → size buttons swap; `Both` exports all iOS then Android (sequential `await`, no overlap). Dispatch: `W>H` → `drawHeader`, else `drawCard`.
 - Canvas: `canvas.width=W; canvas.height=H;` + `fillStyle="#ffffff" fillRect(0,0,W,H)` → PNG RGB no-alpha; phone `W*0.775 × W*2.16`, border `rgba(primary,.32)`, shadow `rgba(15,23,42,.14)`, clip `inset W*0.012`.
 
 ## 5. Deployment — lightweight

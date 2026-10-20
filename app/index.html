@@ -99,6 +99,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
       <option value="ios">iOS App Store</option>
       <option value="android">Google Play</option>
       <option value="both">Both</option>
+      <option value="marketing">Marketing headers</option>
     </select></div>
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
     <button class="btn" id="btnSave">Save</button>
@@ -219,8 +220,13 @@ const PLATFORM_SIZES = {
     {value:"1440x2560", label:"1440×2560", note:"QHD"},
     {value:"1080x2400", label:"1080×2400", note:"Modern"},
     {value:"1440x3120", label:"1440×3120", note:"Tall"},
+  ],
+  marketing: [
+    {value:"5244x2950", label:"5244×2950", note:"Header 16:9"},
+    {value:"3840x1646", label:"3840×1646", note:"Header wide"},
   ]
 };
+const CUSTOM_SIZES = []; // session-only custom WxH entries (not persisted)
 const APP_PRESETS = {
   vidiloop: {
     id:"vidiloop", name:"Vidiloop", primary:"#7c5cff", bg:"#0b0914", headlineSize:50, headlineWeight:"700", headlineColor:"#0f172a", headlineAlign:"center", screens:[
@@ -391,11 +397,13 @@ function syncBrandUI(){
 syncBrandUI();
 
 function buildSizeBtns(){
-  const list = platform==="both" ? [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android] : PLATFORM_SIZES[platform];
+  const base = platform==="both" ? [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android] : PLATFORM_SIZES[platform];
+  const list = [...base, ...CUSTOM_SIZES.filter(c=>c.platform===platform||platform==="both")];
   // ensure exportSize valid
   if(!list.find(s=>s.value===exportSize)) exportSize = list[0].value;
-  sizeBtns.innerHTML = list.map(s=>`<button class="size-btn ${s.value===exportSize?"active":""}" data-size="${s.value}">${s.label}</button>`).join("");
+  sizeBtns.innerHTML = list.map(s=>`<button class="size-btn ${s.value===exportSize?"active":""}" data-size="${s.value}">${s.label}</button>`).join("") + `<button class="size-btn" data-size="__custom">Custom…</button>`;
   sizeBtns.querySelectorAll(".size-btn").forEach(b=>b.addEventListener("click",()=>{
+    if(b.dataset.size==="__custom"){ addCustomSize(); return; }
     exportSize=b.dataset.size;
     syncSizeBadge();
     renderStripOnly();
@@ -403,10 +411,20 @@ function buildSizeBtns(){
     buildSizeBtns();
   }));
   syncSizeBadge();
-  document.getElementById("previewTitle").textContent = `Preview — ${brand.name} · ${platform==="ios"?"iOS":platform==="android"?"Android":"iOS + Android"}`;
+  const platLabel = platform==="ios"?"iOS":platform==="android"?"Android":platform==="marketing"?"Marketing":"iOS + Android";
+  document.getElementById("previewTitle").textContent = `Preview — ${brand.name} · ${platLabel}`;
+}
+function addCustomSize(){
+  const v=prompt("Custom size as WIDTHxHEIGHT (e.g. 1320x2868)?","");
+  if(!v) return;
+  const m=/^(\d+)x(\d+)$/.exec(v.trim());
+  if(!m || +m[1]<100 || +m[2]<100 || +m[1]>6000 || +m[2]>6000){ alert("Use WIDTHxHEIGHT, 100–6000 each."); return; }
+  exportSize=`${+m[1]}x${+m[2]}`;
+  CUSTOM_SIZES.push({value:exportSize, label:`${+m[1]}×${+m[2]}`, note:"Custom", platform});
+  syncSizeBadge(); renderStripOnly(); saveState(); buildSizeBtns();
 }
 function syncSizeBadge(){
-  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android];
+  const all = [...PLATFORM_SIZES.ios, ...PLATFORM_SIZES.android, ...PLATFORM_SIZES.marketing, ...CUSTOM_SIZES];
   const f = all.find(s=>s.value===exportSize);
   document.getElementById("sizeBadge").textContent = exportSize.replace("x"," × ") + (f?` · ${f.note}`:"");
 }
@@ -543,6 +561,15 @@ platformSelect.addEventListener("change",e=>{ platform=e.target.value; buildSize
 
 // ---- canvas draw ----
 const imageCache=new Map();
+// cover-fit an image into x,y,w,h over a bg fill
+function paintCover(ctx, img, x, y, w, h, bg){
+  const pr=w/h, ir=img.width/img.height;
+  let dw,dh,dx,dy;
+  if(ir>pr){ dh=h; dw=dh*ir; dx=x+(w-dw)/2; dy=y; }
+  else { dw=w; dh=dw/ir; dx=x; dy=y+(h-dh)/2; }
+  ctx.fillStyle=bg; ctx.fillRect(x,y,w,h);
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
 function loadImage(src){
   if(!src) return Promise.reject("empty");
   if(imageCache.has(src)) return imageCache.get(src);
@@ -587,15 +614,10 @@ async function drawCard(canvas, headline, src, W, H){
   ctx.save(); roundRect(ctx, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, phoneR-Math.round(W*0.02)); ctx.clip();
   try{
     const img=await loadImage(src);
-    const pr=(phoneW-inset*2)/(phoneH-inset*2); const ir=img.width/img.height;
-    let dw,dh,dx,dy;
-    if(ir>pr){ dh=phoneH-inset*2; dw=dh*ir; dx=phoneX+inset+((phoneW-inset*2)-dw)/2; dy=phoneY+inset;}
-    else { dw=phoneW-inset*2; dh=dw/ir; dx=phoneX+inset; dy=phoneY+inset+((phoneH-inset*2)-dh)/2;}
-    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
-    ctx.drawImage(img, dx, dy, dw, dh);
+    paintCover(ctx, img, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, brand.bg);
   }catch(e){
     ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
-    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(W*0.022)}px Inter`;
+    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(W*0.022)}px Inter`; ctx.textAlign="center";
     ctx.fillText("Upload a screenshot", W/2, phoneY+phoneH/2);
   }
   ctx.restore();
@@ -608,6 +630,55 @@ async function drawCard(canvas, headline, src, W, H){
     roundRect(ctx, phoneX+(phoneW-nw)/2, phoneY, nw, nh, nh/2); ctx.fillStyle=brand.bg; ctx.fill();
   }
 }
+// landscape marketing header: headline left, device right, sized by height
+async function drawHeader(canvas, headline, src, W, H){
+  headline = headline || "Untitled";
+  const ctx=canvas.getContext("2d");
+  canvas.width=W; canvas.height=H;
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+  const border=Math.max(2,Math.round(H*0.02)); const radius=Math.round(H*0.09);
+  roundRect(ctx, border, border, W-border*2, H-border*2, radius);
+  const hex=brand.primary.replace("#",""); const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+  ctx.strokeStyle=`rgba(${r},${g},${b},0.32)`; ctx.lineWidth=Math.max(2,Math.round(H*0.014)); ctx.stroke();
+  ctx.fillStyle="#ffffff"; ctx.fill();
+  // headline block, left
+  const fontSize=Math.round(W*(brand.headlineSize/1320));
+  ctx.fillStyle=brand.headlineColor||"#0f172a"; ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.font=`${brand.headlineWeight||"700"} ${fontSize}px ${brand.font}, Inter, sans-serif`;
+  const maxWidth=W*0.36;
+  const words=headline.trim().split(/\s+/); let lines=[], line="";
+  for(const w of words){ const test=line?line+" "+w:w; if(ctx.measureText(test).width>maxWidth && line){lines.push(line); line=w;} else line=test;}
+  if(line) lines.push(line); if(lines.length>3) lines=lines.slice(0,3);
+  const lineHeight=fontSize*1.15; const tx=Math.round(W*0.07);
+  let y=Math.round(H/2-((lines.length-1)*lineHeight)/2);
+  lines.forEach(l=>{ctx.fillText(l, tx, y); y+=lineHeight;});
+  // device, right, sized by height
+  const phoneH=Math.round(H*0.74); const phoneW=Math.round(phoneH/2.16);
+  const phoneX=Math.round(W*0.93-phoneW); const phoneY=Math.round((H-phoneH)/2);
+  const phoneR=Math.round(H*0.09);
+  ctx.save(); ctx.shadowColor="rgba(15,23,42,0.14)"; ctx.shadowBlur=Math.round(H*0.1); ctx.shadowOffsetY=Math.round(H*0.05);
+  roundRect(ctx, phoneX, phoneY, phoneW, phoneH, phoneR); ctx.fillStyle="#f8fafc"; ctx.fill(); ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=Math.max(1,Math.round(H*0.004)); ctx.stroke(); ctx.restore();
+  const inset=Math.max(2,Math.round(H*0.02));
+  ctx.save(); roundRect(ctx, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, Math.max(1,phoneR-inset*2)); ctx.clip();
+  try{
+    const img=await loadImage(src);
+    paintCover(ctx, img, phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2, brand.bg);
+  }catch(e){
+    ctx.fillStyle=brand.bg; ctx.fillRect(phoneX+inset, phoneY+inset, phoneW-inset*2, phoneH-inset*2);
+    ctx.fillStyle="#9ca3af"; ctx.font=`600 ${Math.round(H*0.04)}px Inter`; ctx.textAlign="center";
+    ctx.fillText("Upload a screenshot", phoneX+phoneW/2, phoneY+phoneH/2);
+  }
+  ctx.restore();
+  if(brand.frame==="island"){
+    const diW=Math.round(phoneW*0.24); const diH=Math.round(H*0.05);
+    roundRect(ctx, phoneX+(phoneW-diW)/2, phoneY+Math.round(H*0.03), diW, diH, diH/2); ctx.fillStyle=brand.bg; ctx.fill();
+  } else if(brand.frame==="notch"){
+    const nw=Math.round(phoneW*0.42); const nh=Math.round(H*0.07);
+    roundRect(ctx, phoneX+(phoneW-nw)/2, phoneY, nw, nh, nh/2); ctx.fillStyle=brand.bg; ctx.fill();
+  }
+}
+// portrait screenshot card vs landscape marketing header
+function draw(canvas, headline, src, W, H){ return W>H ? drawHeader(canvas,headline,src,W,H) : drawCard(canvas,headline,src,W,H); }
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 let previewQueued=false;
 function schedulePreview(){
@@ -617,7 +688,7 @@ function schedulePreview(){
 }
 async function renderStripOnly(){
   const [W,H]=exportSize.split("x").map(Number);
-  const previewW= platform==="android" && H<W ? 260 : 190;
+  const previewW= H<W ? 340 : 190;
   const previewH=Math.round(previewW*H/W);
   const ps=0.25, pw=Math.max(1,Math.round(W*ps)), ph=Math.max(1,Math.round(H*ps));
   strip.innerHTML="";
@@ -637,7 +708,7 @@ async function renderStripOnly(){
     const lab=document.createElement("div"); lab.className="lab"; lab.textContent=(i+1)+" · "+(s.headline||"Untitled"); wrap.appendChild(lab);
     frame.addEventListener("click",()=>{selected=i; render();});
     strip.appendChild(wrap);
-    drawCard(c, s.headline||"Untitled", s.file, pw, ph);
+    draw(c, s.headline||"Untitled", s.file, pw, ph);
   }
   document.getElementById("previewSub").textContent = `${brand.bg} page · white cards with ${brand.primary} stroke · ${brand.font}. Tap a card to edit, magnifier to enlarge. ${screens.length} screens.`;
 }
@@ -647,7 +718,7 @@ async function exportOne(index,W,H){
   index = Math.max(0, Math.min(index, screens.length - 1));
   const s=screens[index];
   const c=document.createElement("canvas");
-  await drawCard(c, s.headline, s.file, W, H);
+  await draw(c, s.headline, s.file, W, H);
   const slug = slugFor(s.headline);
   const name = `${String(index+1).padStart(2,"0")}_${slug}_${W}x${H}.png`;
   const a=document.createElement("a"); a.download=name; a.href=c.toDataURL("image/png"); a.click();
@@ -673,7 +744,7 @@ let lbReturnFocus=null;
 async function openLightbox(i){
   selected=Math.max(0,Math.min(i,screens.length-1));
   const [W,H]=parseSize(exportSize);
-  await drawCard(lbCanvas, screens[selected].headline||"Untitled", screens[selected].file, W, H);
+  await draw(lbCanvas, screens[selected].headline||"Untitled", screens[selected].file, W, H);
   document.getElementById("lbCap").textContent=(selected+1)+" · "+(screens[selected].headline||"Untitled");
   document.getElementById("lbSize").textContent=exportSize.replace("x"," × ");
   lbReturnFocus=document.activeElement;

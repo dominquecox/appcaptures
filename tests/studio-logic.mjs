@@ -67,4 +67,10 @@ assert.equal(merged[0].via, "verify");
 assert.equal(merged[1].email, "b@x.com");
 assert.equal(mergeWaitlist(null, null).length, 0);
 
+// Marketing headers: Apple sizes, landscape renderer, custom entry.
+assert.ok(src.includes("5244x2950") && src.includes("3840x1646"), "marketing header sizes present");
+assert.ok(src.includes("function drawHeader("), "landscape header renderer present");
+assert.ok(src.includes('data-size="__custom"'), "custom size entry present");
+assert.ok(src.includes("function paintCover("), "shared cover-fit helper present");
+
 console.log("studio-logic: all assertions passed");
