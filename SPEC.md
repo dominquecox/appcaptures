@@ -71,6 +71,11 @@ Full read of `app/index.html` (694 lines) found and fixed:
 - Regression net: `node tests/studio-logic.mjs` extracts the real `normHex`/`slugFor`/`clampSelected` from source and asserts behavior + tripwires for the sequencing/selection fixes.
 - NOT verified here: real-browser render (headless Chrome crashes in sandbox), apex reachability from sandbox proxy — both need eyes/browsers outside the sandbox.
 
+## 11. Modules + hardening (2026-10-20)
+- Studio is ES modules (`feat/studio-modules`): `app/js/presets.js` (data, D1-swappable), `models.js` (Brand/Screen coerce + guards, tested), `render.js` (side-effect-free canvas + zip), `store.js` (injectable storage, v3/v2), `ui.js` (DOM), `main.js` (entry). Page loads `js/main.js`; `file://` shows a banner pointing at `tools/local.sh`. No hardcoded presets/sizes/tones outside `presets.js`; brand flows as a function param, never a global.
+- Waitlist abuse (`feat/waitlist-shield`, off `main`): worker verifies Turnstile via siteverify, fails closed, ONLY when `TURNSTILE_SECRET` is set — unset keeps dogfood behavior. Keys + widget are user-side: create widget (dashboard), `wrangler secret put TURNSTILE_SECRET`, embed `cf-turnstile` div, then send its token as `body.turnstile`. Until then, add a dashboard rate-limit rule: `POST /api/waitlist`, e.g. 10 req/min/IP.
+- Contrast: studio small grays to `#94a3b8`. Motion: smooth scroll gated on `prefers-reduced-motion:no-preference`. Touch targets <44px and full WCAG audit still open.
+
 ## 10. Local simulator capture (`tools/capture/sim-capture.sh`, `feat/studio-qa`)
 Snag screenshots from a Mac-local iOS Simulator (`xcrun simctl`, auto-boots newest iPhone when none booted) or Android emulator (`adb screencap`) into `captures/` — then pick them via any Upload slot in the studio. `list` shows booted sims + adb devices with clean no-device errors. Excluded from deploys via `.assetsignore`. Verdict on SaaS sims: local capture = build it (this script); cloud iOS sims need Mac hardware per hour — off the roadmap until revenue; cloud Android emulation (Linux/KVM) is the feasible later play.
 
