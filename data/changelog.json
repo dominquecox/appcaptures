@@ -1,6 +1,11 @@
 {
   "items": [
     {
+      "version": "1.1.0",
+      "date": "2026-10-20",
+      "notes": "Unreleased: studio QA (7 fixes), real 1284px presets, Marketing headers + iPhone Duo sizes, zip export, simulator capture script, ES modules, Turnstile shield (keys pending), SaaS API shell."
+    },
+    {
       "version": "0.3.0",
       "date": "2026-10-19",
       "notes": "Landing page with waitlist, news, and changelog. Studio moves to /app for local dogfooding."

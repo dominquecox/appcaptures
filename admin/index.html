@@ -40,6 +40,7 @@ td{padding:7px 8px;border-bottom:1px solid var(--line);word-break:break-all}
 textarea{width:100%;min-height:130px;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;font:12.5px/1.5 ui-monospace,monospace}
 .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .err{color:#ff9aa5;font-size:13px;font-weight:600}
+.pill{display:inline-block;font-size:10px;font-weight:800;border:1px solid var(--line);border-radius:999px;padding:1px 7px;color:var(--mut);margin-left:6px;vertical-align:1px}
 a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 </style>
 </head>
@@ -52,7 +53,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 <label for="code" style="display:block;font-weight:700;margin-bottom:6px">Dogfood passcode</label>
 <input id="code" type="password" autocomplete="off" placeholder="ask ploonu" />
 <div class="row"><button class="btn" id="unlock">Unlock</button></div>
-<p class="warn">DOGFOOD GATE — this is a local passcode (<code>ploonu</code>), not real security. Production gets Cloudflare Access + D1; waitlist moves from this browser to <code>POST /api/waitlist</code>.</p>
+<p class="warn">DOGFOOD GATE — this is a local passcode (<code>ploonu</code>), not real security. <span class="pill">srv</span> rows come from D1 via <code>GET /api/waitlist</code> and are read-only here; local rows are this browser only.</p>
 </div>
 <div id="console" hidden>
 <div class="panel"><h2>Waitlist — <span id="wlCount">0</span></h2>
@@ -81,18 +82,29 @@ $("unlock").addEventListener("click",()=>{
 $("code").addEventListener("keydown",e=>{ if(e.key==="Enter") $("unlock").click(); });
 function show(){ $("gate").hidden=true; $("console").hidden=false; loadWL(); loadEd("news"); loadEd("changelog"); }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
-function loadWL(){
-  const cur=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]");
-  $("wlCount").textContent=cur.length;
-  $("wlBody").innerHTML=cur.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.email)}</td><td>${esc((x.at||"").slice(0,10))}</td><td>${esc(x.via||"")}</td><td><button class="btn danger" data-i="${i}">✕</button></td></tr>`).join("")||'<tr><td colspan="5" style="color:var(--mut)">Empty — join from the landing page.</td></tr>';
+// pure merge: server (D1) rows first, then local-only rows, deduped by email
+function mergeWaitlist(server, local){
+  const seen=new Set(); const rows=[];
+  (server||[]).forEach(x=>{ const k=String(x.email||"").toLowerCase(); if(k&&!seen.has(k)){ seen.add(k); rows.push({email:x.email, at:x.at||"", via:x.via||x.source||"", srv:true}); } });
+  (local||[]).forEach(x=>{ const k=String(x.email||"").toLowerCase(); if(k&&!seen.has(k)){ seen.add(k); rows.push({email:x.email, at:x.at||"", via:x.via||"", srv:false}); } });
+  return rows;
+}
+let wlRows=[];
+async function loadWL(){
+  let server=[];
+  try{ const r=await fetch("/api/waitlist"); if(r.ok){ const b=await r.json(); if(b&&Array.isArray(b.items)) server=b.items; } }catch(e){ /* local file/http.server: no API, local-only */ }
+  const local=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]");
+  wlRows=mergeWaitlist(server,local);
+  $("wlCount").textContent=wlRows.length;
+  $("wlBody").innerHTML=wlRows.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.email)}${x.srv?'<span class="pill">srv</span>':""}</td><td>${esc((x.at||"").slice(0,10))}</td><td>${esc(x.via||"")}</td><td>${x.srv?"":`<button class="btn danger" data-i="${i}">✕</button>`}</td></tr>`).join("")||'<tr><td colspan="5" style="color:var(--mut)">Empty — join from the landing page.</td></tr>';
   $("wlBody").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-    const c=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]"); c.splice(+b.dataset.i,1);
+    const row=wlRows[+b.dataset.i]; if(!row||row.srv) return;
+    const c=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]").filter(x=>String(x.email||"").toLowerCase()!==String(row.email||"").toLowerCase());
     localStorage.setItem("appcaptures_waitlist",JSON.stringify(c)); loadWL();
   }));
 }
 $("csv").addEventListener("click",()=>{
-  const cur=JSON.parse(localStorage.getItem("appcaptures_waitlist")||"[]");
-  const csv="email,at,via\n"+cur.map(x=>`${x.email},${x.at||""},${x.via||""}`).join("\n");
+  const csv="email,at,via\n"+wlRows.map(x=>`${x.email},${x.at||""},${x.via||""}`).join("\n");
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="appcaptures-waitlist.csv"; a.click();
 });
 $("wipe").addEventListener("click",()=>{ if(confirm("Clear the local waitlist?")){ localStorage.removeItem("appcaptures_waitlist"); loadWL(); } });
