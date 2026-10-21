@@ -40,13 +40,16 @@ export default {
         catch (e) { return json({ error: "forbidden" }, 403); }
         if (!v || v.success !== true) return json({ error: "forbidden" }, 403);
       }
-      try {
-        await env.DB.prepare(
-          "INSERT INTO waitlist (email, platform, source) VALUES (?,?,?)"
-        ).bind(email, String(body.platform || "").slice(0, 20) || null, String(body.source || "").slice(0, 20) || null).run();
-      } catch (e) { /* duplicate email: keep existing row, still return position */ }
-      const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist").first();
-      return json({ ok: true, position: row ? row.c : null });
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO waitlist (email, platform, source) VALUES (?,?,?)"
+      ).bind(email, String(body.platform || "").slice(0, 20) || null, String(body.source || "").slice(0, 20) || null).run();
+      // ordinal join position: rows at-or-before this signup's timestamp.
+      // Duplicates return their ORIGINAL position, not the current total.
+      const me = await env.DB.prepare("SELECT at FROM waitlist WHERE email = ?").bind(email).first();
+      const pos = me
+        ? await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist WHERE at <= ?").bind(me.at).first()
+        : await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist").first();
+      return json({ ok: true, position: pos ? pos.c : 1 });
     }
     if (url.pathname === "/api/waitlist" && req.method === "GET") {
       if (!env.DB) return json({ error: "no db" }, 503);
