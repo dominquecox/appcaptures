@@ -20,15 +20,22 @@ function fakeDB() {
         _a: [],
         bind(...a) { this._a = a; return this; },
         async run() {
-          if(/INSERT INTO waitlist/i.test(sql)){
+          if(/INSERT(\s+OR\s+IGNORE)?\s+INTO waitlist/i.test(sql)){
             const [email, platform, source] = this._a;
-            if(rows.some(r=>r.email === email)) throw new Error("UNIQUE constraint");
-            rows.push({ email, platform, source, at: "2026-01-01 00:00:00" });
+            if(!rows.some(r=>r.email === email)) rows.push({ email, platform, source, at: "2026-01-01 00:00:00" });
           }
           return {};
         },
         async first() {
-          if(/COUNT\(\*\)/i.test(sql)) return { c: rows.length };
+          if(/COUNT\(\*\)/i.test(sql)) {
+            if(/WHERE at <=/i.test(sql)) { const [at] = this._a; return { c: rows.filter(r=>r.at <= at).length }; }
+            return { c: rows.length };
+          }
+          if(/SELECT at/i.test(sql)) {
+            const [email] = this._a;
+            const r = rows.find(x=>x.email === email);
+            return r ? { at: r.at } : null;
+          }
           return null;
         },
         async all() { return { results: rows.map(r=>({ email: r.email, at: r.at, via: r.source })) }; },

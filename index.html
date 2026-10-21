@@ -20,6 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Hanken+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://challenges.cloudflare.com/turnstile/api.js?render=explicit&onload=onloadTurnstileCallback" async defer></script>
 <style>
 :root{--paper:#f5f5f7;--ink:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--accent:#1d1d1f;--card:#ffffff}
 *{box-sizing:border-box}
@@ -48,7 +49,9 @@ header.site{position:sticky;top:0;z-index:20;background:rgba(245,245,247,.9);bac
 .eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 h1{font:800 clamp(34px,5vw,54px)/1.05 "Hanken Grotesk",Inter,sans-serif;letter-spacing:-.03em;margin:12px 0 14px}
 .sub{color:var(--muted);font-size:16.5px;max-width:46ch;margin:0 0 22px}
-.capture{display:flex;gap:8px;max-width:440px}
+.capture{display:flex;gap:8px;max-width:440px;flex-wrap:wrap}
+.capture .tslot{flex:1 1 100%;min-height:0}
+.capture .tslot:empty{display:none}
 .capture input{flex:1;border:1px solid var(--ink);border-radius:10px;padding:11px 13px;font:600 14px Inter,sans-serif;background:#fff;color:var(--ink);min-width:0}
 .fine{font-size:12px;color:var(--muted);margin:10px 0 0}
 .fine a{color:var(--ink);font-weight:700}
@@ -126,6 +129,7 @@ footer.site .right{margin-left:0}
 <form class="capture" id="wlTop" novalidate>
 <input type="email" name="email" placeholder="you@studio.com" aria-label="Email address" required />
 <button class="btn accent" type="submit">Join waitlist</button>
+<div class="tslot" id="tsTop"></div>
 </form>
 <p class="fine">Free to join · iOS, Android &amp; PWA</p>
 </div>
@@ -169,6 +173,7 @@ footer.site .right{margin-left:0}
 <div><form class="capture" id="wlBand" novalidate>
 <input type="email" name="email" placeholder="you@studio.com" aria-label="Email address" required />
 <button class="btn accent" type="submit">Join waitlist</button>
+<div class="tslot" id="tsBand"></div>
 </form><p class="fine" style="color:#a1a1a6">We mail launch + major templates only. No spam, unsubscribe anytime.</p></div>
 </div>
 </div></section>
@@ -190,12 +195,28 @@ async function previews(){
   if(cp) cp.innerHTML=(cl&&cl.items||[]).slice(0,4).map(c=>`<div class="item"><h4>${esc(c.version)} <time>· ${esc(c.date)}</time></h4><p>${esc(c.notes)}</p></div>`).join("")||'<p class="lede">Nothing shipped yet — check back soon.</p>';
 }
 function wireWaitlist(id){
+const TS_SITEKEY="0x4AAAAAAFedLj22-Cz_ba3F";
+const TS_WIDGETS={};
+function onloadTurnstileCallback(){
+  if(!window.turnstile) return;
+  try{ TS_WIDGETS.wlTop=turnstile.render("#tsTop",{sitekey:TS_SITEKEY,action:"waitlist"}); }catch(e){}
+  try{ TS_WIDGETS.wlBand=turnstile.render("#tsBand",{sitekey:TS_SITEKEY,action:"waitlist"}); }catch(e){}
+}
+function tsToken(id){
+  try{ const wid=TS_WIDGETS[id]; if(wid!==undefined&&window.turnstile) return turnstile.getResponse(wid)||""; }catch(e){}
+  return "";
+}
+function tsReset(id){
+  try{ const wid=TS_WIDGETS[id]; if(wid!==undefined&&window.turnstile) turnstile.reset(wid); }catch(e){}
+}
+function wireWaitlist(id){
   const f=document.getElementById(id); if(!f) return;
   f.addEventListener("submit",async e=>{
     e.preventDefault();
     const email=f.email.value.trim();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ f.email.focus(); return; }
     const entry={email,at:new Date().toISOString(),via:id};
+    const tok=tsToken(id); if(tok) entry.turnstile=tok;
     let serverPos=null;
     try{
       const r=await fetch("/api/waitlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry)});
@@ -203,6 +224,7 @@ function wireWaitlist(id){
       const b=await r.json().catch(()=>null);
       if(b&&typeof b.position==="number") serverPos=b.position;
     }catch(err){ /* offline: local fallback below keeps signup working */ }
+    tsReset(id);
     try{
       const k="appcaptures_waitlist", cur=JSON.parse(localStorage.getItem(k)||"[]");
       if(!cur.some(x=>x.email===email)) cur.push(entry);
