@@ -56,16 +56,14 @@ h1{font:800 clamp(34px,5vw,54px)/1.05 "Hanken Grotesk",Inter,sans-serif;letter-s
 .fine{font-size:12px;color:var(--muted);margin:10px 0 0}
 .fine a{color:var(--ink);font-weight:700}
 .okmsg{border:1px solid #18a538;background:#e9f7ee;color:#0d5c22;border-radius:10px;padding:11px 13px;font-weight:700;font-size:14px;max-width:440px}
-.phone{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:26px 22px 22px;box-shadow:0 18px 50px rgba(16,19,48,.10)}
-.phone h3{margin:0 0 4px;font:800 15px "Hanken Grotesk",Inter,sans-serif;text-align:center}
-.phone p.cap{text-align:center;color:var(--muted);font-size:12px;margin:0 0 16px}
-.device{background:#000;border-radius:26px;padding:12px;max-width:230px;margin:0 auto}
-.screen{background:#000;border-radius:18px;overflow:hidden;color:#fff;padding:34px 14px 14px;text-align:center;min-height:300px}
-.screen .st{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a1a1a6;font-weight:800}
-.screen .sh{font:800 19px/1.2 "Hanken Grotesk",Inter,sans-serif;margin:8px 0 12px}
-.shots{display:flex;gap:6px;justify-content:center;margin-top:12px}
-.shots i{width:44px;height:66px;border-radius:8px;background:#2c2c2e;border:1px solid #3a3a3c;display:block}
-.strip{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
+.shipcard{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:26px 24px 24px;box-shadow:0 18px 50px rgba(16,19,48,.10)}
+.shipcard h3{margin:0 0 4px;font:800 17px "Hanken Grotesk",Inter,sans-serif;letter-spacing:-.01em}
+.shipcard p.cap{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+.shipcard ul{list-style:none;margin:0;padding:0;display:grid;gap:11px}
+.shipcard li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:600}
+.shipcard li .tick{flex:none;width:22px;height:22px;border-radius:999px;background:#e9f7ee;border:1px solid #bfe6c9;color:#0d5c22;display:grid;place-items:center;font-size:12px;font-weight:800}
+.shipcard li small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.strip{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
 .chip{font-size:11.5px;font-weight:700;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 11px;color:var(--muted)}
 section.block{padding:52px 0;border-top:1px solid var(--line)}
 h2.sec{font:800 clamp(24px,3.4vw,34px)/1.1 "Hanken Grotesk",Inter,sans-serif;letter-spacing:-.02em;margin:0 0 8px}
@@ -103,13 +101,21 @@ footer.site .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 footer.site a{font-weight:600}
 footer.site .right{margin-left:auto}
 @media(max-width:640px){
-.nav{min-height:0;padding:12px 0}
+.wrap{padding:0 22px}
+.nav{min-height:0;padding:14px 0}
 .nav nav{display:none}
-.hero{padding:40px 0 36px}
-section.block{padding:36px 0}
-.band{padding:26px 20px}
+.nav .cta{width:100%}
+.nav .cta .btn{flex:1;text-align:center}
+.hero{padding:52px 0 44px}
+h1{margin-bottom:14px}
+section.block{padding:48px 0}
+.band{padding:30px 22px}
+.band .btn{width:100%}
+.shipcard{padding:24px 20px}
+footer.site{padding-bottom:40px}
 .capture{flex-direction:column}
 .capture .btn{width:100%}
+.capture input{padding:13px}
 footer.site .right{margin-left:0}
 }
 </style>
@@ -133,15 +139,17 @@ footer.site .right{margin-left:0}
 </form>
 <p class="fine">Free to join · iOS, Android &amp; PWA</p>
 </div>
-<div class="phone" aria-hidden="true">
-<h3>Loop any moment</h3>
-<p class="cap">1320 × 2868 · 6.9″ · PNG, no alpha</p>
-<div class="device"><div class="screen">
-<p class="st">Vidiloop · For you</p>
-<p class="sh">Loop any moment</p>
-<div class="shots"><i></i><i></i><i></i></div>
-</div></div>
-<div class="strip"><span class="chip">Vidiloop</span><span class="chip">Yaps</span><span class="chip">TypePress</span></div>
+<div class="shipcard">
+<h3>What you get at launch</h3>
+<p class="cap">Exact pixels, zero design tools.</p>
+<ul>
+<li><span class="tick">✓</span><span>App Store + Play screenshots<small>Every iPhone, iPad, and Android size, PNG no-alpha.</small></span></li>
+<li><span class="tick">✓</span><span>Marketing headers + Duo<small>New product-page headers and iPhone Duo slots, ready to upload.</small></span></li>
+<li><span class="tick">✓</span><span>One-click ZIP export<small>All 10 screens, named and packed per size.</small></span></li>
+<li><span class="tick">✓</span><span>Your brand, remembered<small>Headlines, colors, and type per app — set once.</small></span></li>
+<li><span class="tick">✓</span><span>Icons + listings next<small>App icons and AI-assisted store copy land right after.</small></span></li>
+</ul>
+<div class="strip"><span class="chip">iOS</span><span class="chip">Android</span><span class="chip">PWA</span></div>
 </div>
 </div>
 </main>
