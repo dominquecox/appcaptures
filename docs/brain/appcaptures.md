@@ -16,7 +16,7 @@ Repo: `dominquecox/appcaptures` at `/Users/ploonu/code/appcaptures`.
 
 ## Run / test / ship (no tokens needed for local + tests)
 - `./tools/local.sh` — pull, serve :8347, open `/app/`. Studio needs http (modules break on `file://`).
-- `node tests/studio-logic.mjs`, `node tests/api.mjs` — must both pass before merge.
+- `node tests/api.mjs`, `node tests/studio-logic.mjs`, `node tests/waitlist-position.mjs`, `node tests/waitlist-shield.mjs` — all four must pass before merge (all green 2026-10-22, node v22.16.0).
 - Deploy (Mini, own auth): `npx wrangler deploy --config wrangler.jsonc`.
 - D1: `npx wrangler d1 execute appcaptures_db --remote --file schema.sql`; SaaS tables in `schema-saas.sql` (unapplied).
 

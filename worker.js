@@ -9,6 +9,65 @@ function json(data, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+// Bounded JSON body: Content-Length fast-path, then a capped stream read so a
+// lying header can't buffer unbounded data into Worker memory. Rejects
+// non-object JSON (null, arrays, primitives) so downstream property access
+// can't throw an unhandled 500. 64KB covers real payloads (~100B waitlist,
+// small export/listing forms); raise per-route if screenshots go inline.
+const MAX_BODY_BYTES = 64 * 1024;
+
+async function readJson(req, maxBytes = MAX_BODY_BYTES) {
+  const len = Number(req.headers.get("content-length"));
+  if (Number.isFinite(len) && len > maxBytes) {
+    const e = new Error("too large"); e.status = 413; throw e;
+  }
+  const decoder = new TextDecoder();
+  let text = "";
+  if (req.body) {
+    const reader = req.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        if (text.length > maxBytes) {
+          await reader.cancel();
+          const e = new Error("too large"); e.status = 413; throw e;
+        }
+      }
+    } finally { reader.releaseLock(); }
+  }
+  text += decoder.decode();
+  const parsed = JSON.parse(text); // throws SyntaxError on empty/malformed JSON
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const e = new Error("bad json"); e.status = 400; throw e;
+  }
+  return parsed;
+}
+
+function bodyError(e) {
+  const status = (e && e.status) || 400;
+  return json({ error: status === 413 ? "body too large" : "bad json" }, status);
+}
+
+// Staff gate: open while ADMIN_TOKEN is unset (dogfood, same convention as
+// Turnstile). When set, GET /api/waitlist requires the bearer token, compared
+// via SHA-256 digest so raw secrets never meet ===. Launch replaces this with
+// Cloudflare Access; the token path stays for scripts.
+async function adminOk(req, env) {
+  if (!env.ADMIN_TOKEN) return true;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(String(req.headers.get("authorization") || ""))),
+    crypto.subtle.digest("SHA-256", enc.encode(`Bearer ${env.ADMIN_TOKEN}`)),
+  ]);
+  const xa = new Uint8Array(a), xb = new Uint8Array(b);
+  if (xa.length !== xb.length) return false;
+  let d = 0;
+  for (let i = 0; i < xa.length; i++) d |= xa[i] ^ xb[i];
+  return d === 0;
+}
+
 // Optional bot shield: when env.TURNSTILE_SECRET is set, POST /api/waitlist
 // requires a valid Turnstile token and fails closed. Unset = current open
 // behavior (dogfood). Keys stay in the dashboard/secret store, never here.
@@ -28,8 +87,8 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === "/api/waitlist" && req.method === "POST") {
       if (!env.DB) return json({ ok: false, fallback: true }, 503);
-      let body = {};
-      try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
       if (env.TURNSTILE_SECRET) {
@@ -53,6 +112,7 @@ export default {
     }
     if (url.pathname === "/api/waitlist" && req.method === "GET") {
       if (!env.DB) return json({ error: "no db" }, 503);
+      if (!(await adminOk(req, env))) return json({ error: "forbidden" }, 403);
       const { results } = await env.DB.prepare(
         "SELECT email, at, source AS via FROM waitlist ORDER BY at ASC LIMIT 5000"
       ).all();
@@ -62,8 +122,8 @@ export default {
       return json({ ok: true, version: 1, db: !!env.DB, ai: !!env.AI, queue: !!env.EXPORT_QUEUE });
     }
     if (url.pathname === "/api/listing/generate" && req.method === "POST") {
-      let body = {};
-      try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const appId = String(body.appId || "").trim().slice(0, 40);
       const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : null;
       const locale = String(body.locale || "en-US");
@@ -75,8 +135,8 @@ export default {
       return json({ ok: false, error: "not implemented" }, 501);
     }
     if (url.pathname === "/api/exports" && req.method === "POST") {
-      let body = {};
-      try { body = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const appId = String(body.appId || "").trim().slice(0, 40);
       const size = String(body.size || "");
       const n = Array.isArray(body.screens) ? body.screens.length : 0;

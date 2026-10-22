@@ -11,9 +11,11 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const src = readFileSync(path.join(root, "worker.js"), "utf8");
 const worker = new Function(`${src.replace("export default", "const __w =")}; return __w;`)();
 
-// Minimal fake D1: INSERT (unique email), COUNT(*), SELECT-all.
+// Minimal fake D1: INSERT OR IGNORE (one row per email), ordinal COUNT, SELECT-all.
+// Mirrors tests/waitlist-position.mjs — the ordinal contract is production behavior.
 function fakeDB() {
   const rows = [];
+  let t = 0;
   return {
     rows,
     prepare(sql) {
@@ -21,15 +23,27 @@ function fakeDB() {
         _a: [],
         bind(...a) { this._a = a; return this; },
         async run() {
-          if (/INSERT INTO waitlist/i.test(sql)) {
+          if (/INSERT/i.test(sql)) {
             const [email, platform, source] = this._a;
-            if (rows.some((r) => r.email === email)) throw new Error("UNIQUE constraint");
-            rows.push({ email, platform, source, at: "2026-01-01 00:00:00" });
+            if (!rows.some((r) => r.email === email)) {
+              rows.push({ email, platform, source, at: `2026-01-01 00:00:${String(t++).padStart(2, "0")}` });
+            }
           }
           return {};
         },
         async first() {
-          if (/COUNT\(\*\)/i.test(sql)) return { c: rows.length };
+          if (/COUNT\(\*\)/i.test(sql)) {
+            if (/WHERE at <=/i.test(sql)) {
+              const [at] = this._a;
+              return { c: rows.filter((r) => r.at <= at).length };
+            }
+            return { c: rows.length };
+          }
+          if (/SELECT at/i.test(sql)) {
+            const [email] = this._a;
+            const r = rows.find((x) => x.email === email);
+            return r ? { at: r.at } : null;
+          }
           return null;
         },
         async all() {
@@ -55,8 +69,8 @@ const post = (p, body, env) =>
   assert.deepEqual(await r.json(), { ok: true, position: 1 });
   r = await post("/api/waitlist", { email: "b@x.com" }, env);
   assert.deepEqual(await r.json(), { ok: true, position: 2 });
-  r = await post("/api/waitlist", { email: "a@x.com" }, env); // duplicate keeps position
-  assert.deepEqual(await r.json(), { ok: true, position: 2 });
+  r = await post("/api/waitlist", { email: "a@x.com" }, env); // duplicate keeps ORIGINAL position
+  assert.deepEqual(await r.json(), { ok: true, position: 1 });
   r = await post("/api/waitlist", { email: "nope" }, env);
   assert.equal(r.status, 400);
   r = await worker.fetch(req("/api/waitlist"), env);
@@ -69,6 +83,48 @@ const post = (p, body, env) =>
 {
   const r = await worker.fetch(req("/api/waitlist"), {}); // no binding
   assert.equal(r.status, 503);
+}
+
+// --- hardening: bounded bodies, strict JSON, staff gate ---
+{
+  const env = { DB: fakeDB() };
+  const raw = (p, body) =>
+    worker.fetch(
+      req(p, { method: "POST", headers: { "Content-Type": "application/json" }, body }),
+      env
+    );
+  // oversized body rejected before validation (Content-Length fast-path or capped read)
+  let r = await post("/api/waitlist", { email: "a@x.com", pad: "A".repeat(70000) }, env);
+  assert.equal(r.status, 413);
+  assert.deepEqual(await r.json(), { error: "body too large" });
+  // non-object JSON rejected with 400, never an unhandled 500
+  for (const bad of ["null", "[1,2]", "42", '"str"']) {
+    r = await raw("/api/waitlist", bad);
+    assert.equal(r.status, 400, bad);
+  }
+  // malformed JSON still 400s
+  r = await raw("/api/waitlist", "{oops");
+  assert.equal(r.status, 400);
+  assert.deepEqual(await r.json(), { error: "bad json" });
+  // guard sits in front of every POST route (queue check never reached)
+  r = await post("/api/exports", { appId: "v", size: "1x1", screens: [{}], pad: "A".repeat(70000) }, {});
+  assert.equal(r.status, 413);
+  r = await raw("/api/listing/generate", "null");
+  assert.equal(r.status, 400);
+}
+{
+  // staff gate: open while ADMIN_TOKEN unset (existing GET test above covers this),
+  // closed with 403 once set; timing-safe compare accepts the right token.
+  const env = { DB: fakeDB(), ADMIN_TOKEN: "s3cret" };
+  await post("/api/waitlist", { email: "a@x.com" }, env);
+  let r = await worker.fetch(req("/api/waitlist"), env);
+  assert.equal(r.status, 403);
+  assert.deepEqual(await r.json(), { error: "forbidden" });
+  r = await worker.fetch(req("/api/waitlist", { headers: { Authorization: "Bearer wrong" } }), env);
+  assert.equal(r.status, 403);
+  r = await worker.fetch(req("/api/waitlist", { headers: { Authorization: "Bearer s3cret" } }), env);
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).items.length, 1);
 }
 
 // --- health ---

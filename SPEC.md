@@ -81,7 +81,7 @@ Full read of `app/index.html` (694 lines) found and fixed:
 - **Touch targets:** studio buttons/minis/size pills/zoom/close bumped to 32–36px (WCAG 2.2 AA 24px floor met; Apple 44px deliberately traded for preview density).
 - **Focus:** lightbox traps Tab across Close/Prev/Next, returns focus on close, Esc/arrows/E/0-9 keyboard map intact.
 - **Perf budget (static, sandbox can't run Lighthouse — runtime numbers need Mini):** public landing ~28KB HTML+JSON+icons (fonts external, deferred modules, SW-cached shell); studio ~55KB JS+HTML local-only. No render-blocking local JS, zero npm deps shipped.
-- **Security:** Turnstile shield env-gated on `feat/waitlist-shield`; D1 parameterized; no secrets in repo (swept).
+- **Security:** Turnstile shield env-gated on `feat/waitlist-shield`; D1 parameterized; no secrets in repo (swept). API bodies capped at 64KB via `readJson` (Content-Length fast-path + capped stream read → `413`), non-object JSON rejected (`400`, never a `500`); `GET /api/waitlist` staff-gated ONLY when `ADMIN_TOKEN` is set (SHA-256 digest compare; unset = dogfood-open like Turnstile; launch replaces with Cloudflare Access).
 
 ## 13. Roadmap (2026-10-20 — director-owned, in priority order)
 1. **Merge `integrate/v1.1` → `main`** (human sign-off): shield + QA + modules + SaaS shell, all suites green. Then deploy + wipe `example.com` D1 rows.
