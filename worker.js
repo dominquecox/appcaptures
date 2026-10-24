@@ -23,17 +23,19 @@ async function readJson(req, maxBytes = MAX_BODY_BYTES) {
   }
   const decoder = new TextDecoder();
   let text = "";
+  let bytes = 0;
   if (req.body) {
     const reader = req.body.getReader();
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        text += decoder.decode(value, { stream: true });
-        if (text.length > maxBytes) {
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
           await reader.cancel();
           const e = new Error("too large"); e.status = 413; throw e;
         }
+        text += decoder.decode(value, { stream: true });
       }
     } finally { reader.releaseLock(); }
   }

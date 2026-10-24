@@ -97,6 +97,17 @@ const post = (p, body, env) =>
   let r = await post("/api/waitlist", { email: "a@x.com", pad: "A".repeat(70000) }, env);
   assert.equal(r.status, 413);
   assert.deepEqual(await r.json(), { error: "body too large" });
+  // UTF-8 bytes, not decoded characters, determine the stream limit.
+  r = await post("/api/waitlist", { email: "a@x.com", pad: "界".repeat(23000) }, env);
+  assert.equal(r.status, 413);
+  assert.deepEqual(await r.json(), { error: "body too large" });
+  // Exact byte boundary is accepted; the next byte is rejected.
+  const base = JSON.stringify({ email: "boundary@x.com", pad: "" });
+  const atLimit = JSON.stringify({ email: "boundary@x.com", pad: "A".repeat(65536 - Buffer.byteLength(base)) });
+  r = await raw("/api/waitlist", atLimit);
+  assert.equal(r.status, 200);
+  r = await raw("/api/waitlist", atLimit + " ");
+  assert.equal(r.status, 413);
   // non-object JSON rejected with 400, never an unhandled 500
   for (const bad of ["null", "[1,2]", "42", '"str"']) {
     r = await raw("/api/waitlist", bad);
