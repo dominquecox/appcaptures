@@ -104,11 +104,12 @@ export default {
       await env.DB.prepare(
         "INSERT OR IGNORE INTO waitlist (email, platform, source) VALUES (?,?,?)"
       ).bind(email, String(body.platform || "").slice(0, 20) || null, String(body.source || "").slice(0, 20) || null).run();
-      // ordinal join position: rows at-or-before this signup's timestamp.
+      // Ordinal join position: timestamp, then SQLite rowid for same-second joins.
+      // The existing rowid needs no schema migration and duplicates keep it.
       // Duplicates return their ORIGINAL position, not the current total.
-      const me = await env.DB.prepare("SELECT at FROM waitlist WHERE email = ?").bind(email).first();
+      const me = await env.DB.prepare("SELECT at, rowid AS id FROM waitlist WHERE email = ?").bind(email).first();
       const pos = me
-        ? await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist WHERE at <= ?").bind(me.at).first()
+        ? await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist WHERE at < ? OR (at = ? AND rowid <= ?)").bind(me.at, me.at, me.id).first()
         : await env.DB.prepare("SELECT COUNT(*) AS c FROM waitlist").first();
       return json({ ok: true, position: pos ? pos.c : 1 });
     }
@@ -116,7 +117,7 @@ export default {
       if (!env.DB) return json({ error: "no db" }, 503);
       if (!(await adminOk(req, env))) return json({ error: "forbidden" }, 403);
       const { results } = await env.DB.prepare(
-        "SELECT email, at, source AS via FROM waitlist ORDER BY at ASC LIMIT 5000"
+        "SELECT email, at, source AS via FROM waitlist ORDER BY at ASC, rowid ASC LIMIT 5000"
       ).all();
       return json({ items: results || [] });
     }

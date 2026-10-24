@@ -205,7 +205,6 @@ async function previews(){
   if(np) np.innerHTML=(news&&news.items||[]).slice(0,3).map(n=>`<div class="item"><h4><a href="/news/">${esc(n.title)}</a></h4><time>${esc(n.date)}</time><p>${esc(n.summary)}</p></div>`).join("")||'<p class="lede">First post ships with launch.</p>';
   if(cp) cp.innerHTML=(cl&&cl.items||[]).slice(0,4).map(c=>`<div class="item"><h4>${esc(c.version)} <time>· ${esc(c.date)}</time></h4><p>${esc(c.notes)}</p></div>`).join("")||'<p class="lede">Nothing shipped yet — check back soon.</p>';
 }
-function wireWaitlist(id){
 const TS_SITEKEY="0x4AAAAAAFedLj22-Cz_ba3F";
 const TS_WIDGETS={};
 function onloadTurnstileCallback(){
