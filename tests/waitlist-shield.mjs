@@ -22,19 +22,19 @@ function fakeDB() {
         async run() {
           if(/INSERT(\s+OR\s+IGNORE)?\s+INTO waitlist/i.test(sql)){
             const [email, platform, source] = this._a;
-            if(!rows.some(r=>r.email === email)) rows.push({ email, platform, source, at: "2026-01-01 00:00:00" });
+            if(!rows.some(r=>r.email === email)) rows.push({ id: rows.length + 1, email, platform, source, at: "2026-01-01 00:00:00" });
           }
           return {};
         },
         async first() {
           if(/COUNT\(\*\)/i.test(sql)) {
-            if(/WHERE at <=/i.test(sql)) { const [at] = this._a; return { c: rows.filter(r=>r.at <= at).length }; }
+            if(/WHERE at </i.test(sql)) { const [at, , id] = this._a; return { c: rows.filter(r=>r.at < at || (r.at === at && r.id <= id)).length }; }
             return { c: rows.length };
           }
           if(/SELECT at/i.test(sql)) {
             const [email] = this._a;
             const r = rows.find(x=>x.email === email);
-            return r ? { at: r.at } : null;
+            return r ? { at: r.at, id: r.id } : null;
           }
           return null;
         },
