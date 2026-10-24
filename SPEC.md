@@ -2,7 +2,7 @@
 
 **Repo:** `dominquecox/appcaptures` (`/Users/ploonu/code/appcaptures`), `main` holds release v1.
 **Live (permanent, on your account):** `https://appcaptures.ploonu.workers.dev` (worker `appcaptures`, D1 `appcaptures_db` bound as `env.DB`) + custom domain `https://appcaptures.com` (apex Custom Domain, universal SSL).
-**Public surface:** `/` landing (mono black/gray, waitlist), `/news/`, `/changelog/`, `/api/waitlist`. Studio (`/app/`) + admin (`/admin/`) are **local-only** — kept in repo, excluded from deploys by `.assetsignore`.
+**Public surface:** `/` landing (mono black/gray, waitlist), `/news/`, `/changelog/`, `/api/waitlist`. Studio (`/app/`) + admin (`/admin/`) are **local-only** — kept outside `public/`, the sole deployed asset directory.
 **Local:** `python3 -m http.server 8347` in repo root → `http://localhost:8347/app/` for studio dogfood.
 
 ## 1. What it is
@@ -34,7 +34,7 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 - Canvas: `canvas.width=W; canvas.height=H;` + `fillStyle="#ffffff" fillRect(0,0,W,H)` → PNG RGB no-alpha; phone `W*0.775 × W*2.16`, border `rgba(primary,.32)`, shadow `rgba(15,23,42,.14)`, clip `inset W*0.012`.
 
 ## 5. Deployment — lightweight
-- **Workers Static Assets** `wrangler.jsonc` `name: ploonu-screenshots` `assets.directory: "."` — recommended for new sites per `developers.cloudflare.com/workers/static-assets/`. Dry-run: `Read 8 files — 0.35 KiB`.
+- **Workers Static Assets** `wrangler.jsonc` `name: ploonu-screenshots` `assets.directory: "./public"` — recommended for new sites per `developers.cloudflare.com/workers/static-assets/`. Dry-run: `Read 8 files — 0.35 KiB`.
 - **OAuth** `~/.wrangler/config/default.toml` `oauth_token cfoat_…` expires `2026-10-18T07:48:50.359Z` + proxy `http://127.0.0.1:57917` + `com.apple.provenance` → `wrangler whoami` EPERM; use `HOME=/tmp/fakehome npx wrangler deploy --temporary` for previews, `npx wrangler login` for permanent.
 - **Tailscale fallback** — Dell i7 `100.111.148.97` (Postgres 16, `ufw allow in on tailscale0`) → `python3 -m http.server 8000` + `tailscale serve --https=443` → `https://ploonu.<tailnet>.ts.net` (tailnet only, sandbox cannot reach `100.111.148.97:8443` directly — `Operation not permitted` even with `--noproxy "*"`).
 
@@ -51,11 +51,11 @@ Stored in `localStorage: ploonu_screenshots_v3` as `apps: { vidiloop: {brand,scr
 - Live `curl -s https://appcaptures.ploonu.workers.dev/` → `200`, title → `1`, `Headline — per app` → `1` — permanent, verified.
 
 ## 8b. Landing + waitlist (merged to `main` as v1)
-Public face while the studio dogfoods locally: `/` landing (monochrome `#1d1d1f/#f5f5f7`, hero, email capture ×2, features, how-it-works, news/changelog previews, waitlist band, PWA installable), `/news/` + `/changelog/` render `data/*.json`, `/admin/` super admin console (local-only). Waitlist `POST /api/waitlist` → D1 via `worker.js` + `schema.sql` (server position wins when present; falls back to `localStorage:appcaptures_waitlist` while `env.DB` is unbound). Deploys exclude `app/ admin/ docs/ SPEC.md schema.sql wrangler.jsonc worker.js` via `.assetsignore`. Plan: `docs/plans/2026-10-19-landing-waitlist.md`.
+Public face while the studio dogfoods locally: `/` landing (monochrome `#1d1d1f/#f5f5f7`, hero, email capture ×2, features, how-it-works, news/changelog previews, waitlist band, PWA installable), `/news/` + `/changelog/` render `data/*.json`, `/admin/` super admin console (local-only). Waitlist `POST /api/waitlist` → D1 via `worker.js` + `schema.sql` (server position wins when present; falls back to `localStorage:appcaptures_waitlist` while `env.DB` is unbound). Deploys include only `public/`: landing, news/changelog, data, icons, manifest, robots, sitemap and service worker. Worker, schemas, local studio/admin, Git and tooling stay outside it. `public/.assetsignore` adds defense in depth; `tests/asset-manifest.mjs` checks Wrangler's complete dry-run asset enumeration from a clean checkout against an explicit allowlist. Plan: `docs/plans/2026-10-19-landing-waitlist.md`.
 
 ## 8. How any engineer continues
 - Branch: feature branches off `main` in `dominquecox/appcaptures`; `main` is the release line.
-- Where: `app/index.html` (studio, local-only), `index.html` (public landing), `worker.js` + `schema.sql` (waitlist API), this `SPEC.md`, `docs/SAAS_SPEC.md`.
+- Where: `app/index.html` (studio, local-only), `public/index.html` (public landing), `worker.js` + `schema.sql` (waitlist API), this `SPEC.md`, `docs/SAAS_SPEC.md`.
 - Checks: `node tests/studio-logic.mjs` (studio guards) + `npx wrangler deploy --dry-run --config wrangler.jsonc`.
 - Local studio: `python3 -m http.server 8347` in repo root → `http://localhost:8347/app/`.
 - Style: public pages monochrome; studio keeps per-app brand. Exact store pixels, PNG no-alpha, persist per-app (`ploonu_screenshots_v3`).
