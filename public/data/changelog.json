@@ -3,22 +3,22 @@
     {
       "version": "1.1.0",
       "date": "2026-10-20",
-      "notes": "Unreleased: studio QA (7 fixes), real 1284px presets, Marketing headers + iPhone Duo sizes, zip export, simulator capture script, ES modules, Turnstile shield (keys pending), SaaS API shell."
+      "notes": "Preview: refined screenshot layouts, larger device presets, marketing headers, and ZIP exports."
     },
     {
       "version": "0.3.0",
       "date": "2026-10-19",
-      "notes": "Landing page with waitlist, news, and changelog. Studio moves to /app for local dogfooding."
+      "notes": "A new landing page with a waitlist, product news, and release notes."
     },
     {
       "version": "0.2.0",
       "date": "2026-10-18",
-      "notes": "Enlarge lightbox with keyboard navigation. Quarter-scale previews cut memory ~16x; slider input rAF-throttled."
+      "notes": "Enlarge screenshot previews with keyboard navigation, smoother adjustments, and lighter memory use."
     },
     {
       "version": "0.1.0",
       "date": "2026-10-18",
-      "notes": "Agnostic per-app studio: brand + headline size, weight, color, and alignment remembered per app. iOS and Android export sizes."
+      "notes": "Screenshot layouts remember your brand, headline styling, and alignment, with export sizes for iOS and Android."
     }
   ]
 }
