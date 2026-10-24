@@ -1,0 +1,11 @@
+# Defense in depth: only intentionally public files belong in this directory.
+.git
+.wrangler
+node_modules
+.dev.vars*
+.env*
+worker.js
+wrangler.jsonc
+schema*.sql
+*.map
+.DS_Store
