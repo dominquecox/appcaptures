@@ -121,6 +121,11 @@ footer.site{padding-bottom:40px}
 .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
 footer.site .right{margin-left:0}
 }
+/* legal-links */
+footer.site .wrap{display:flex;gap:8px 18px;flex-wrap:wrap;align-items:center}
+footer.site a{display:inline-flex;align-items:center;min-height:44px}
+a:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.band .fine a{color:#fff}
 </style>
 </head>
 <body>
@@ -140,6 +145,7 @@ footer.site .right{margin-left:0}
 <button class="btn accent" type="submit">Join waitlist</button>
 <div class="tslot" id="tsTop"></div>
 </form>
+<p class="fine">By joining you agree to our <a href="/privacy">Privacy Policy</a>. <a href="/terms">Terms</a> · <a href="/support#remove-email">Remove my email / unsubscribe</a>.</p>
 <p class="fine">Free to join · iOS, Android &amp; PWA</p>
 </div>
 <div class="shipcard">
@@ -185,13 +191,14 @@ footer.site .right{margin-left:0}
 <input type="email" name="email" placeholder="you@studio.com" aria-label="Email address" required />
 <button class="btn accent" type="submit">Join waitlist</button>
 <div class="tslot" id="tsBand"></div>
-</form><p class="fine" style="color:#a1a1a6">We mail launch + major templates only. No spam, unsubscribe anytime.</p></div>
+</form><p class="fine" style="color:#a1a1a6">By joining you agree to our <a href="/privacy">Privacy Policy</a>. <a href="/terms">Terms</a> · <a href="/support#remove-email">Remove my email / unsubscribe</a>.</p><p class="fine" style="color:#a1a1a6">We mail launch + major templates only. No spam, unsubscribe anytime.</p></div>
 </div>
 </div></section>
 <footer class="site"><div class="wrap">
-<span>© 2026 AppCaptures</span>
-<a href="/news/">News</a><a href="/changelog/">Changelog</a>
-<span class="right">Launch updates go to the waitlist first.</span>
+<span>© 2026 AppCaptures · Ploonu LLC</span>
+<a href="/">Home</a><a href="/news/">News</a><a href="/changelog/">Changelog</a>
+<a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/support">Support</a>
+<a href="/support#remove-email">Remove my email</a><a href="mailto:support@appcaptures.com">support@appcaptures.com</a>
 </div></footer>
 <script>
 async function loadJSON(path){
