@@ -1,7 +1,7 @@
 // AppCaptures service worker — tiny app-shell cache, zero deps.
 // Bump V to force clients onto fresh assets after a deploy.
 // API + JSON data stay network-first so waitlist/news never go stale.
-const V = "appcaptures-v5-legal";
+const V = "appcaptures-v6-brand-copy";
 const CORE = ["/", "/manifest.json", "/icons/icon-192.png", "/news/", "/changelog/"];
 
 self.addEventListener("install", (e) => {
