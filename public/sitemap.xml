@@ -3,4 +3,7 @@
   <url><loc>https://appcaptures.com/</loc><changefreq>weekly</changefreq></url>
   <url><loc>https://appcaptures.com/news/</loc><changefreq>weekly</changefreq></url>
   <url><loc>https://appcaptures.com/changelog/</loc><changefreq>weekly</changefreq></url>
+  <url><loc>https://appcaptures.com/terms</loc><changefreq>yearly</changefreq></url>
+  <url><loc>https://appcaptures.com/privacy</loc><changefreq>yearly</changefreq></url>
+  <url><loc>https://appcaptures.com/support</loc><changefreq>yearly</changefreq></url>
 </urlset>

@@ -13,6 +13,7 @@ const temp = mkdtempSync(path.join(tmpdir(), 'appcaptures-assets-'));
 const checkout = path.join(temp, 'checkout');
 const allowlist = new Set([
   '/index.html', '/news/index.html', '/changelog/index.html',
+  '/terms/index.html', '/privacy/index.html', '/support/index.html',
   '/data/news.json', '/data/changelog.json',
   '/icons/apple-touch-icon.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png',
   '/manifest.json', '/robots.txt', '/sitemap.xml', '/sw.js',
