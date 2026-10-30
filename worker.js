@@ -52,12 +52,12 @@ function bodyError(e) {
   return json({ error: status === 413 ? "body too large" : "bad json" }, status);
 }
 
-// Staff gate: open while ADMIN_TOKEN is unset (dogfood, same convention as
-// Turnstile). When set, GET /api/waitlist requires the bearer token, compared
-// via SHA-256 digest so raw secrets never meet ===. Launch replaces this with
-// Cloudflare Access; the token path stays for scripts.
+// Staff gate: fails closed if ADMIN_TOKEN is missing or unset. When set,
+// GET /api/waitlist requires the bearer token, compared via SHA-256 digest
+// so raw secrets never meet ===. Launch replaces this with Cloudflare Access;
+// the token path stays for scripts.
 async function adminOk(req, env) {
-  if (!env.ADMIN_TOKEN) return true;
+  if (!env.ADMIN_TOKEN) return false;
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(String(req.headers.get("authorization") || ""))),
@@ -71,8 +71,9 @@ async function adminOk(req, env) {
 }
 
 // Optional bot shield: when env.TURNSTILE_SECRET is set, POST /api/waitlist
-// requires a valid Turnstile token and fails closed. Unset = current open
-// behavior (dogfood). Keys stay in the dashboard/secret store, never here.
+// requires a valid Turnstile token and fails closed. In production (env.ENV === "prod"),
+// missing TURNSTILE_SECRET fails closed (403). Unset secret in non-prod keeps open
+// behavior for dogfood/local dev. Keys stay in the dashboard/secret store, never here.
 // Widget + action/hostname pinning land with the frontend sitekey.
 async function verifyTurnstile(secret, token, ip){
   const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
@@ -93,6 +94,9 @@ export default {
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
+        return json({ error: "forbidden" }, 403);
+      }
       if (env.TURNSTILE_SECRET) {
         const token = String(body.turnstile || "");
         if (!token || token.length > 2048) return json({ error: "forbidden" }, 403);

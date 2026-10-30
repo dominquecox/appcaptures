@@ -72,6 +72,21 @@ async function withSiteverify(mode, fn){
   } finally{ globalThis.fetch = realFetch; }
 }
 
+// prod fail-closed: unset secret in prod returns 403 forbidden and 0 rows inserted.
+{
+  let called = false;
+  globalThis.fetch = async () => { called = true; throw new Error("must not fetch"); };
+  try {
+    const db = fakeDB();
+    const env = { DB: db, ENV: "prod" };
+    const r = await worker.fetch(req({ email: "prod@x.com" }), env);
+    assert.equal(r.status, 403);
+    assert.deepEqual(await r.json(), { error: "forbidden" });
+    assert.equal(called, false);
+    assert.equal(db.rows.length, 0, "no row inserted on prod fail-closed");
+  } finally { globalThis.fetch = realFetch; }
+}
+
 // secret set: valid token passes, secret actually sent.
 {
   const { r, seen } = await withSiteverify("ok", () =>
