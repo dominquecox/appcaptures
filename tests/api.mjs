@@ -74,6 +74,9 @@ const post = (p, body, env) =>
   r = await post("/api/waitlist", { email: "nope" }, env);
   assert.equal(r.status, 400);
   r = await worker.fetch(req("/api/waitlist"), env);
+  assert.equal(r.status, 403);
+  assert.deepEqual(await r.json(), { error: "forbidden" });
+  r = await worker.fetch(req("/api/waitlist", { headers: { Authorization: "Bearer s3cret" } }), { ...env, ADMIN_TOKEN: "s3cret" });
   assert.equal(r.status, 200);
   const list = await r.json();
   assert.equal(list.items.length, 2);
@@ -124,18 +127,34 @@ const post = (p, body, env) =>
   assert.equal(r.status, 400);
 }
 {
-  // staff gate: open while ADMIN_TOKEN unset (existing GET test above covers this),
-  // closed with 403 once set; timing-safe compare accepts the right token.
-  const env = { DB: fakeDB(), ADMIN_TOKEN: "s3cret" };
-  await post("/api/waitlist", { email: "a@x.com" }, env);
-  let r = await worker.fetch(req("/api/waitlist"), env);
+  // staff gate: fails closed if ADMIN_TOKEN unset,
+  // closed with 403 once set without valid token; timing-safe compare accepts the right token.
+  const db = fakeDB();
+  const envNoToken = { DB: db };
+  await post("/api/waitlist", { email: "a@x.com" }, envNoToken);
+
+  // Unset ADMIN_TOKEN: returns 403 {"error": "forbidden"}
+  let r = await worker.fetch(req("/api/waitlist"), envNoToken);
   assert.equal(r.status, 403);
   assert.deepEqual(await r.json(), { error: "forbidden" });
+
+  const env = { DB: db, ADMIN_TOKEN: "s3cret" };
+  // ADMIN_TOKEN set, missing Authorization: returns 403
+  r = await worker.fetch(req("/api/waitlist"), env);
+  assert.equal(r.status, 403);
+  assert.deepEqual(await r.json(), { error: "forbidden" });
+
+  // ADMIN_TOKEN set, invalid Authorization: returns 403
   r = await worker.fetch(req("/api/waitlist", { headers: { Authorization: "Bearer wrong" } }), env);
   assert.equal(r.status, 403);
+  assert.deepEqual(await r.json(), { error: "forbidden" });
+
+  // ADMIN_TOKEN set, correct Authorization: Bearer <token>: returns 200 with items list
   r = await worker.fetch(req("/api/waitlist", { headers: { Authorization: "Bearer s3cret" } }), env);
   assert.equal(r.status, 200);
-  assert.equal((await r.json()).items.length, 1);
+  const data = await r.json();
+  assert.equal(data.items.length, 1);
+  assert.equal(data.items[0].email, "a@x.com");
 }
 
 // --- health ---
