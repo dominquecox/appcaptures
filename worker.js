@@ -5,8 +5,65 @@
 // -> wrangler d1 execute appcaptures_db --file schema.sql -> deploy.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function json(data, status = 200) {
-  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+function json(data, status = 200, extraHeaders = {}) {
+  return Response.json(data, {
+    status,
+    headers: { "Cache-Control": "no-store", ...extraHeaders },
+  });
+}
+
+function parseCookies(header) {
+  const cookies = {};
+  if (!header) return cookies;
+  const parts = header.split(";");
+  for (const part of parts) {
+    const idx = part.indexOf("=");
+    if (idx !== -1) {
+      const key = part.slice(0, idx).trim();
+      const val = part.slice(idx + 1).trim();
+      try {
+        cookies[key] = decodeURIComponent(val);
+      } catch {
+        cookies[key] = val;
+      }
+    }
+  }
+  return cookies;
+}
+
+function getSessionToken(req) {
+  const cookies = parseCookies(req.headers.get("cookie") || "");
+  return cookies.appcaptures_session || null;
+}
+
+function generateToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashToken(token) {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(token));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function authenticateSession(req, env) {
+  if (!env.DB) return null;
+  const token = getSessionToken(req);
+  if (!token) return null;
+  const tokenHash = await hashToken(token);
+  const row = await env.DB.prepare(
+    `SELECT u.id, u.email, u.name, u.plan, u.status, s.id AS session_id, s.token_hash, s.expires_at
+     FROM sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND (u.status IS NULL OR u.status != 'deleted')`
+  ).bind(tokenHash).first();
+  return row || null;
 }
 
 // Bounded JSON body: Content-Length fast-path, then a capped stream read so a
@@ -127,6 +184,160 @@ export default {
     }
     if (url.pathname === "/api/health" && req.method === "GET") {
       return json({ ok: true, version: 1, db: !!env.DB, ai: !!env.AI, queue: !!env.EXPORT_QUEUE });
+    }
+    if (url.pathname === "/api/auth/magic-link" && req.method === "POST") {
+      if (!env.DB) return json({ ok: false, fallback: true }, 503);
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+
+      if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
+        return json({ error: "forbidden" }, 403);
+      }
+      if (env.TURNSTILE_SECRET) {
+        const token = String(body.turnstile || "");
+        if (!token || token.length > 2048) return json({ error: "forbidden" }, 403);
+        let v;
+        try {
+          v = await verifyTurnstile(env.TURNSTILE_SECRET, token, req.headers.get("CF-Connecting-IP"));
+        } catch (e) {
+          return json({ error: "forbidden" }, 403);
+        }
+        if (!v || v.success !== true) return json({ error: "forbidden" }, 403);
+      }
+
+      const rawToken = generateToken();
+      const tokenHash = await hashToken(rawToken);
+      await env.DB.prepare(
+        "INSERT INTO magic_links (token_hash, email, expires_at) VALUES (?, ?, datetime('now', '+15 minutes'))"
+      ).bind(tokenHash, email).run();
+
+      if (env.RESEND_API_KEY) {
+        const link = `${url.origin}/api/auth/callback?token=${rawToken}`;
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "AppCaptures <appcaptures@ploonu.com>",
+            to: email,
+            reply_to: "support@appcaptures.com",
+            subject: "Your AppCaptures sign-in link",
+            text: `Your AppCaptures sign-in link:\n\n${link}\n\nThis link expires in 15 minutes.`,
+            html: `<p>Your AppCaptures sign-in link:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes.</p>`,
+          }),
+        });
+        if (!res.ok) {
+          return json({ error: "failed to send email" }, 502);
+        }
+      }
+
+      return json({ ok: true });
+    }
+    if (url.pathname === "/api/auth/callback" && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const rawToken = url.searchParams.get("token");
+      if (!rawToken) return json({ error: "invalid or expired token" }, 401);
+
+      const tokenHash = await hashToken(rawToken);
+      const link = await env.DB.prepare(
+        "SELECT email, expires_at FROM magic_links WHERE token_hash = ? AND used_at IS NULL AND datetime(expires_at) > datetime('now')"
+      ).bind(tokenHash).first();
+
+      if (!link) {
+        return json({ error: "invalid or expired token" }, 401);
+      }
+
+      await env.DB.prepare(
+        "UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ?"
+      ).bind(tokenHash).run();
+
+      let user = await env.DB.prepare(
+        "SELECT id, email, name, plan, status FROM users WHERE email = ?"
+      ).bind(link.email).first();
+
+      if (!user) {
+        const userId = crypto.randomUUID();
+        await env.DB.prepare(
+          "INSERT INTO users (id, email, status, plan, last_login_at) VALUES (?, ?, 'active', 'free', datetime('now'))"
+        ).bind(userId, link.email).run();
+        user = { id: userId, email: link.email, name: null, plan: "free", status: "active" };
+      } else {
+        await env.DB.prepare(
+          "UPDATE users SET last_login_at = datetime('now'), status = 'active' WHERE id = ?"
+        ).bind(user.id).run();
+        user.status = "active";
+      }
+
+      const rawSessionToken = generateToken();
+      const sessionTokenHash = await hashToken(rawSessionToken);
+      const sessionId = crypto.randomUUID();
+      const ip = req.headers.get("CF-Connecting-IP") || null;
+      const ua = req.headers.get("User-Agent") || null;
+
+      await env.DB.prepare(
+        "INSERT INTO sessions (id, user_id, token_hash, expires_at, ip, ua) VALUES (?, ?, ?, datetime('now', '+30 days'), ?, ?)"
+      ).bind(sessionId, user.id, sessionTokenHash, ip, ua).run();
+
+      const cookie = `appcaptures_session=${rawSessionToken}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`;
+      if (url.searchParams.get("redirect")) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": url.searchParams.get("redirect"),
+            "Set-Cookie": cookie,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      return json(
+        { ok: true, user: { id: user.id, email: user.email, name: user.name, plan: user.plan, status: user.status } },
+        200,
+        { "Set-Cookie": cookie }
+      );
+    }
+    if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const token = getSessionToken(req);
+      if (token) {
+        const tokenHash = await hashToken(token);
+        await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
+      }
+      return json(
+        { ok: true },
+        200,
+        { "Set-Cookie": "appcaptures_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" }
+      );
+    }
+    if (url.pathname === "/api/me" && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      return json({
+        ok: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name ?? null,
+          plan: user.plan ?? "free",
+          status: user.status ?? "active",
+        },
+      });
+    }
+    if (url.pathname === "/api/me" && req.method === "DELETE") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      await env.DB.prepare("UPDATE users SET status = 'deleted' WHERE id = ?").bind(user.id).run();
+      await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id).run();
+      return json(
+        { ok: true },
+        200,
+        { "Set-Cookie": "appcaptures_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" }
+      );
     }
     if (url.pathname === "/api/listing/generate" && req.method === "POST") {
       let body;
