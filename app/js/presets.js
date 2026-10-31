@@ -15,19 +15,25 @@ export const PLATFORM_SIZES = {
   ios: [
     {value:"1320x2868", label:"1320×2868", note:"6.9\""},
     {value:"1290x2796", label:"1290×2796", note:"6.7\""},
+    {value:"1260x2736", label:"1260×2736", note:"iPhone Air"},
     {value:"1284x2778", label:"1284×2778", note:"6.5\""},
-    {value:"1206x2622", label:"1206×2622", note:"6.1\""},
+    {value:"1242x2688", label:"1242×2688", note:"6.5\" Face ID"},
+    {value:"1206x2622", label:"1206×2622", note:"6.1\" DI"},
+    {value:"1179x2556", label:"1179×2556", note:"6.1\" DI (Required)"},
     {value:"2064x2752", label:"2064×2752", note:"iPad 13\""},
+    {value:"2048x2732", label:"2048×2732", note:"iPad 13\""},
   ],
   android: [
     {value:"1080x1920", label:"1080×1920", note:"Phone"},
     {value:"1440x2560", label:"1440×2560", note:"QHD"},
-    {value:"1080x2400", label:"1080×2400", note:"Modern"},
-    {value:"1440x3120", label:"1440×3120", note:"Tall"},
+    {value:"1080x2160", label:"1080×2160", note:"18:9"},
   ],
   marketing: [
     {value:"5244x2950", label:"5244×2950", note:"Header 16:9"},
     {value:"3840x1646", label:"3840×1646", note:"Header wide"},
+    {value:"1024x500", label:"1024×500", note:"Play Feature Graphic"},
+    {value:"512x512", label:"512×512", note:"Play App Icon"},
+    {value:"1024x1024", label:"1024×1024", note:"App Store Icon"},
   ],
   duo: [
     {value:"1398x2034", label:"1398×2034", note:"Duo outer"},
@@ -36,6 +42,12 @@ export const PLATFORM_SIZES = {
     {value:"2853x2007", label:"2853×2007", note:"Duo inner land"},
   ]
 };
+
+export const STORE_PREVIEWS = [
+  {value:"1024x500", label:"1024×500", note:"Play Feature Graphic", platform:"android"},
+  {value:"512x512", label:"512×512", note:"Play App Icon", platform:"android"},
+  {value:"1024x1024", label:"1024×1024", note:"App Store Icon", platform:"ios"},
+];
 
 export const APP_PRESETS = {
   vidiloop: {
