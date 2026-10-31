@@ -142,6 +142,19 @@ async function verifyTurnstile(secret, token, ip){
   return r.json();
 }
 
+let _aiAdapter;
+async function getAIAdapter(env) {
+  if (env && env.AI_ADAPTER) return env.AI_ADAPTER;
+  if (!_aiAdapter) {
+    try {
+      _aiAdapter = await import("./engine/ai-adapter.js");
+    } catch {
+      _aiAdapter = await import("../engine/ai-adapter.js");
+    }
+  }
+  return _aiAdapter;
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -342,15 +355,140 @@ export default {
     if (url.pathname === "/api/listing/generate" && req.method === "POST") {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
-      const appId = String(body.appId || "").trim().slice(0, 40);
+
+      const { normalizeStore, generateListingCopy, sanitizeListing } = await getAIAdapter(env);
+
+      const projectId = String(body.projectId || body.appId || "").trim();
+      const rawStore = body.store || body.platform;
+      const store = normalizeStore(rawStore);
+      const locale = String(body.locale || "en-US").trim();
       const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : null;
-      const locale = String(body.locale || "en-US");
-      if (!appId || !shots || !/^[a-z]{2}(-[A-Z]{2})?$/.test(locale)) {
-        return json({ error: "need appId, screenshots[<=10], locale" }, 400);
+
+      // Legacy stub support when no DB is bound (for tests/api.mjs contract):
+      if (!env.DB) {
+        if (!projectId || (!store && !shots) || !/^[a-z]{2}(-[A-Z]{2})?$/.test(locale)) {
+          return json({ error: "need projectId, store (or screenshots[<=10]), locale" }, 400);
+        }
+        if (!env.AI && !env.GEMINI_API_KEY && !env.MOCK_AI) {
+          return json({ ok: false, error: "ai not configured" }, 501);
+        }
       }
-      // Model wiring lands with the AI binding (Workers AI -> Gemini -> BYO via AI Gateway).
-      if (!env.AI) return json({ ok: false, error: "ai not configured" }, 501);
-      return json({ ok: false, error: "not implemented" }, 501);
+
+      // Authenticates user session (fails closed with 401 if unauthorized)
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      // Validates { projectId, store, locale, appName, context }. Store must be "ios" or "play" (or "apple" / "google")
+      if (!projectId) return json({ error: "projectId required" }, 400);
+      if (!store) return json({ error: "store must be ios or play" }, 400);
+      if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(locale)) {
+        return json({ error: "invalid locale format" }, 400);
+      }
+
+      // Verifies project belongs to user and is not archived (404 if not found)
+      const project = await env.DB.prepare(
+        "SELECT id, user_id, name, archived_at FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!project) return json({ error: "not found" }, 404);
+
+      const appName = String(body.appName || project.name || "").trim() || "App";
+      const context = String(body.context || "");
+      const screenshots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : [];
+
+      // Invokes AI adapter to generate title, subtitle/short, description, keywords/tags
+      const rawFields = await generateListingCopy({
+        store,
+        appName,
+        context,
+        locale,
+        screenshots,
+        env,
+      });
+
+      // Applies code-enforced limits via sanitizeListing(store, rawFields)
+      const fields = sanitizeListing(store, rawFields);
+
+      // Inserts or updates row in D1 listings (id, project_id, store, locale, fields_json)
+      const existing = await env.DB.prepare(
+        "SELECT id FROM listings WHERE project_id = ? AND store = ? AND locale = ?"
+      ).bind(projectId, store, locale).first();
+
+      let listingId;
+      if (existing) {
+        listingId = existing.id;
+        await env.DB.prepare(
+          "UPDATE listings SET fields_json = ? WHERE id = ?"
+        ).bind(JSON.stringify(fields), listingId).run();
+      } else {
+        listingId = crypto.randomUUID();
+        await env.DB.prepare(
+          "INSERT INTO listings (id, project_id, store, locale, fields_json) VALUES (?, ?, ?, ?, ?)"
+        ).bind(listingId, projectId, store, locale, JSON.stringify(fields)).run();
+      }
+
+      // Returns json({ ok: true, listing: { id, projectId, store, locale, fields } })
+      return json({
+        ok: true,
+        listing: {
+          id: listingId,
+          projectId,
+          store,
+          locale,
+          fields,
+        },
+      });
+    }
+    const projectListingMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/listing$/);
+    if (projectListingMatch && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      const projectId = decodeURIComponent(projectListingMatch[1]);
+      const project = await env.DB.prepare(
+        "SELECT id, user_id, name, archived_at FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!project) return json({ error: "not found" }, 404);
+
+      const { normalizeStore } = await getAIAdapter(env);
+      const storeQuery = url.searchParams.get("store");
+      const store = storeQuery ? normalizeStore(storeQuery) : null;
+      const locale = url.searchParams.get("locale");
+
+      let row;
+      if (store && locale) {
+        row = await env.DB.prepare(
+          "SELECT id, project_id, store, locale, fields_json FROM listings WHERE project_id = ? AND store = ? AND locale = ? ORDER BY id DESC LIMIT 1"
+        ).bind(projectId, store, locale).first();
+      } else if (store) {
+        row = await env.DB.prepare(
+          "SELECT id, project_id, store, locale, fields_json FROM listings WHERE project_id = ? AND store = ? ORDER BY id DESC LIMIT 1"
+        ).bind(projectId, store).first();
+      } else {
+        row = await env.DB.prepare(
+          "SELECT id, project_id, store, locale, fields_json FROM listings WHERE project_id = ? ORDER BY id DESC LIMIT 1"
+        ).bind(projectId).first();
+      }
+
+      if (!row) return json({ error: "not found" }, 404);
+
+      let fields = {};
+      try {
+        fields = JSON.parse(row.fields_json || "{}");
+      } catch {
+        fields = {};
+      }
+
+      return json({
+        ok: true,
+        listing: {
+          id: row.id,
+          projectId: row.project_id,
+          store: row.store,
+          locale: row.locale,
+          fields,
+        },
+      });
     }
     if (url.pathname === "/api/exports" && req.method === "POST") {
       let body;
