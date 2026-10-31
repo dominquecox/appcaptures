@@ -4,6 +4,10 @@
 	"main": "worker.js",
 	"compatibility_date": "2026-10-19",
 	"compatibility_flags": [],
+	"workers_dev": false,
+	"vars": {
+		"ENV": "prod"
+	},
 	"assets": {
 		"directory": "./public",
 		"not_found_handling": "single-page-application"
@@ -21,7 +25,28 @@
 			"database_id": "28e9e076-f0ff-44d0-a272-046db1819fc1",
 			"remote": true
 		}
-	]
+	],
+	"env": {
+		"dev": {
+			"name": "appcaptures-dev",
+			"workers_dev": true,
+			"vars": {
+				"ENV": "dev"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "appcaptures_db_dev",
+					"database_id": "28e9e076-f0ff-44d0-a272-046db1819fc1", // dev D1 database id
+					"remote": true
+				}
+			],
+			"assets": {
+				"directory": "./public",
+				"not_found_handling": "single-page-application"
+			}
+		}
+	}
 	// SaaS roadmap — create Mini-side, then uncomment to bind (never on main until ready):
 	// "r2_buckets": [{ "binding": "EXPORTS", "bucket_name": "appcaptures-exports" }],
 	// "kv_namespaces": [{ "binding": "SESSIONS", "id": "PASTE_ID_HERE" }],
