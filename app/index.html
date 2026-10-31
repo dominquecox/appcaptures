@@ -79,6 +79,17 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#fff;font-size:18px;line-height:1;cursor:pointer}
 #lbPrev{left:14px}#lbNext{right:14px}
 #lbClose{position:absolute;top:14px;right:14px;min-width:36px;height:36px;border-radius:9px;border:1px solid #2a2450;background:#161329;color:#fff;cursor:pointer;font-size:13px}
+.review-modal{position:fixed;inset:0;z-index:70;display:flex;justify-content:flex-end}
+.review-modal[hidden]{display:none}
+.review-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.7)}
+.review-drawer{position:relative;width:100%;max-width:440px;height:100%;background:#0e0c1a;border-left:1px solid #2a2450;display:flex;flex-direction:column;padding:20px;box-sizing:border-box;overflow-y:auto;z-index:2;box-shadow:-8px 0 32px rgba(0,0,0,.6)}
+.review-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.review-pass-card{background:#161329;border:1px solid #2a2450;border-radius:10px;padding:12px;font-size:12px}
+.review-pass-card.pass-success{border-color:rgba(34,197,94,.4)}
+.review-pass-title{font-weight:700;color:#fff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.review-notes-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px}
+.review-notes-list li{display:flex;align-items:center;gap:6px;color:#cbd5e1;font-size:11.5px;line-height:1.4}
+.review-notes-list li .badge-ok{color:#4ade80;font-weight:700}
 </style>
 </head>
 <body>
@@ -106,6 +117,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
     <button class="btn" id="btnSave">Save</button>
     <button class="btn ghost" id="btnResetAll" title="Clear saved studio state and reload fresh presets">Reset</button>
+    <button class="btn primary" id="btnGenerateSet" style="background:#7c5cff;color:#fff;">Generate Set</button>
     <button class="btn primary" id="btnExportAll">Export all</button>
   </div>
 </div>
@@ -180,15 +192,50 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
       </figure>
     </div>
     <div class="export-row">
+      <button class="btn primary" id="btnGenerateSet2" style="background:#7c5cff;color:#fff;">Generate Set</button>
       <button class="btn primary" id="btnExportAll2">Export all</button>
       <button class="btn" id="btnExportSelected">Export selected</button>
       <button class="btn" id="btnEnlarge">Enlarge selected</button>
       <button class="btn" id="btnExportOther">Export other platform</button>
+      <button class="btn" id="btnReviewDrawer">Review &amp; Passes</button>
       <span class="pill" id="countPill">8 screens</span>
     </div>
     <div class="note">
       <b style="color:#e5e7eb">Agnostic Ploonu toggle:</b> Vidiloop (#7c5cff · #0b0914), <span style="color:#ff6b00">Yaps (#ff6b00 · #0d0b14)</span> from yaps.club, TypePress (#0ea5e9 · #0f172a), Generic or Custom. Switch apps — brand, headlines and samples swap instantly. Upload your own <span style="font-family:ui-monospace,monospace">screen.png</span> per slot. Exports PNG, RGB, no alpha.<br>
       <b>Sizes:</b> iOS 1320×2868 (6.9"), 1290×2796, 1284×2778, 1206×2622, 2064×2752 iPad · Android 1080×1920, 1440×2560, 1080×2400
+    </div>
+  </div>
+</div>
+
+<div id="reviewModal" hidden class="review-modal">
+  <div class="review-backdrop" id="reviewBackdrop"></div>
+  <div class="review-drawer" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="review-header">
+      <div>
+        <h3 id="reviewTitle" style="margin:0;font-size:15px;color:#fff;display:flex;align-items:center;gap:8px;">
+          Review &amp; Passes
+          <span id="reviewBadge" class="pill" style="background:#1e293b;color:#38bdf8;">Ready</span>
+        </h3>
+        <p style="margin:4px 0 0;font-size:11.5px;color:#94a3b8;">Deterministic checks &amp; vision review loop</p>
+      </div>
+      <button id="reviewClose" class="btn ghost" style="padding:4px 8px;min-height:auto;" aria-label="Close review drawer">✕</button>
+    </div>
+    <div class="review-body" style="margin-top:16px;">
+      <div class="review-section">
+        <label class="label">Generated Target Sizes</label>
+        <div id="reviewSizesList" class="sizes" style="margin-top:6px;">
+          <span class="pill">1320×2868</span>
+        </div>
+      </div>
+      <div class="review-section" style="margin-top:16px;">
+        <label class="label">Per-Pass Review Notes</label>
+        <div id="reviewPassesList" style="margin-top:8px;display:flex;flex-direction:column;gap:10px;">
+          <div class="note" style="color:#94a3b8;">No render run yet. Click "Generate Set" to run passes.</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-footer" style="margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;">
+      <button class="btn" id="reviewCloseBtn">Close</button>
     </div>
   </div>
 </div>

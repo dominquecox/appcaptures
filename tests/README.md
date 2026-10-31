@@ -11,6 +11,7 @@ node tests/inline-scripts.mjs
 node tests/render-loop.mjs
 node tests/auth.mjs
 node tests/projects-api.mjs
+node tests/render-api.mjs
 ```
 
 The inline-script check extracts executable inline scripts from `public/index.html` and passes each to `node --check` via stdin.
