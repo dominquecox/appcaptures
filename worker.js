@@ -270,7 +270,7 @@ export default {
 
       const changes = (updateRes && updateRes.meta && typeof updateRes.meta.changes === "number")
         ? updateRes.meta.changes
-        : (updateRes && typeof updateRes.changes === "number" ? updateRes.changes : (updateRes && updateRes.success ? 1 : 0));
+        : (updateRes && typeof updateRes.changes === "number" ? updateRes.changes : 0);
       if (changes === 0) {
         return json({ error: "invalid or expired token" }, 401);
       }
@@ -304,7 +304,7 @@ export default {
 
       const cookie = `appcaptures_session=${rawSessionToken}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`;
       const redirect = url.searchParams.get("redirect");
-      if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
+      if (redirect && /^\/(?![\/\\])[^\\]*$/.test(redirect)) {
         return new Response(null, {
           status: 302,
           headers: {

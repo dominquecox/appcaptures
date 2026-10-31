@@ -230,7 +230,7 @@ const post = (url, body, env, headers = {}) =>
     const userCount = db.rawDb.prepare("SELECT COUNT(*) AS c FROM users WHERE email = ?").get("founder@ploonu.com");
     assert.equal(userCount.c, 1, "Must not create duplicate user row on re-login");
 
-    // Test safe redirect paths (must start with "/" and NOT "//")
+    // Test safe redirect paths (single leading slash, no "//" prefix, no backslashes)
     extractedToken = null;
     await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
     assert.ok(extractedToken);
@@ -260,6 +260,27 @@ const post = (url, body, env, headers = {}) =>
     r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=https://evil.com`), env);
     assert.equal(r.status, 200);
     assert.equal(r.headers.get("Location"), null);
+
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=/\\evil.com`), env);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("Location"), null);
+
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=${encodeURIComponent("/\\evil.com")}`), env);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("Location"), null);
+
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=/`), env);
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get("Location"), "/");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -403,7 +424,56 @@ const post = (url, body, env, headers = {}) =>
   assert.equal(r.status, 401);
 }
 
-// --- 8. Redirect on callback (if requested) ---
+// --- 8. Magic-link consume fails closed when D1 run() omits changes count ---
+{
+  const base = createD1();
+  const env = {
+    DB: {
+      rawDb: base.rawDb,
+      prepare(sql) {
+        const inner = base.prepare(sql);
+        return {
+          _bindings: [],
+          bind(...args) {
+            this._bindings = args;
+            inner.bind(...args);
+            return this;
+          },
+          async run() {
+            if (/UPDATE magic_links SET used_at/i.test(sql)) {
+              return { success: true };
+            }
+            return inner.run();
+          },
+          async first() {
+            return inner.first();
+          },
+          async all() {
+            return inner.all();
+          },
+        };
+      },
+    },
+  };
+
+  const rawToken = "nochangesfield1234567890abcdef1234567890ab";
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(rawToken));
+  const tokenHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  base.rawDb.prepare(
+    "INSERT INTO magic_links (token_hash, email, expires_at) VALUES (?, 'nochanges@example.com', datetime('now', '+15 minutes'))"
+  ).run(tokenHash);
+
+  const r = await worker.fetch(req(`/api/auth/callback?token=${rawToken}`), env);
+  assert.equal(r.status, 401);
+  assert.deepEqual(await r.json(), { error: "invalid or expired token" });
+
+  const linkRow = base.rawDb.prepare("SELECT used_at FROM magic_links WHERE token_hash = ?").get(tokenHash);
+  assert.equal(linkRow.used_at, null, "Must not treat ambiguous update as consumed when changes count is missing");
+}
+
+// --- 9. Redirect on callback (if requested) ---
 {
   const db = createD1();
   const env = { DB: db };
