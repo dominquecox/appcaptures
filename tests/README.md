@@ -10,6 +10,7 @@ node tests/waitlist-shield.mjs
 node tests/inline-scripts.mjs
 node tests/render-loop.mjs
 node tests/auth.mjs
+node tests/projects-api.mjs
 ```
 
 The inline-script check extracts executable inline scripts from `public/index.html` and passes each to `node --check` via stdin.
@@ -33,7 +34,7 @@ Run after committing the candidate, since this test creates a clean detached che
 WRANGLER_CLI=/path/to/wrangler/wrangler-dist/cli.js node tests/asset-manifest.mjs
 ```
 
-The verified CLI is Wrangler 4.152.0. If `WRANGLER_CLI` is omitted the test uses `wrangler` from PATH. The test executes only `deploy --dry-run`, parses Wrangler's debug asset enumeration and ignore decisions, and fails closed if that output contract changes. It checks all 16 public asset paths against an explicit allowlist, verifies root-level development debris cannot alter it, and verifies unexpected public files and a regression to a repository-wide asset root are caught. Symlink assets are rejected. Every checkout/build is temporary and removed after the test; no deployment or remote resource writes occur. `ASSET_MANIFEST_REPORT=/absolute/path/report.json` optionally saves the manifest and mutation-test evidence.
+The verified CLI is Wrangler 4.152.0. If `WRANGLER_CLI` is omitted the test uses `wrangler` from PATH. The test executes only `deploy --dry-run`, parses Wrangler's debug asset enumeration and ignore decisions, and fails closed if that output contract changes. It checks all 31 public asset paths against an explicit allowlist, verifies root-level development debris cannot alter it, and verifies unexpected public files and a regression to a repository-wide asset root are caught. Symlink assets are rejected. Every checkout/build is temporary and removed after the test; no deployment or remote resource writes occur. `ASSET_MANIFEST_REPORT=/absolute/path/report.json` optionally saves the manifest and mutation-test evidence.
 
 Public marketing preview: `wrangler dev --local --config wrangler.jsonc` uses `public/`. Studio dogfood remains `tools/local.sh` and `/app/` from the repository root.
 

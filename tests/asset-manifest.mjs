@@ -17,6 +17,17 @@ const allowlist = new Set([
   '/data/news.json', '/data/changelog.json',
   '/icons/apple-touch-icon.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png',
   '/manifest.json', '/robots.txt', '/sitemap.xml', '/sw.js',
+  '/app/index.html',
+  '/app/js/main.js', '/app/js/models.js', '/app/js/presets.js',
+  '/app/js/render.js', '/app/js/store.js', '/app/js/ui.js',
+  '/app/presets/vidiloop/capture/screen.png',
+  '/app/presets/vidiloop/discover/screen.png',
+  '/app/presets/vidiloop/for_you_feed/screen.png',
+  '/app/presets/vidiloop/notifications/screen.png',
+  '/app/presets/vidiloop/onboarding/screen.png',
+  '/app/presets/vidiloop/plus_paywall/screen.png',
+  '/app/presets/vidiloop/profile_top8/screen.png',
+  '/app/presets/vidiloop/trim_editor/screen.png',
 ]);
 const cli = process.env.WRANGLER_CLI ? [process.execPath, [path.resolve(process.env.WRANGLER_CLI)]] : ['wrangler', []];
 function inspect(label) {

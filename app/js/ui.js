@@ -125,16 +125,33 @@ function buildLeft(){
     e.stopPropagation();
     const i = +el.dataset.i;
     if(state.screens.length <= 1) return alert("Keep at least 1 screen.");
-    state.screens.splice(i, 1);
+    const removed = state.screens.splice(i, 1)[0];
     if(state.selected >= state.screens.length) state.selected = state.screens.length - 1;
     save(); render();
+    if(removed && removed.id && typeof fetch === "function"){
+      fetch("/api/screens/" + removed.id, { method: "DELETE", credentials: "same-origin" }).catch(()=>{});
+    }
   }));
   leftPanel.querySelectorAll("button[data-k=dup]").forEach(el=>el.addEventListener("click", e=>{
     e.stopPropagation();
     const i = +el.dataset.i;
     if(state.screens.length >= 10) return alert("Max 10 screens (store limit).");
-    state.screens.splice(i + 1, 0, JSON.parse(JSON.stringify(state.screens[i])));
+    const dup = JSON.parse(JSON.stringify(state.screens[i]));
+    delete dup.id;
+    state.screens.splice(i + 1, 0, dup);
     state.selected = i + 1; save(); render();
+    if(state.projectId && typeof fetch === "function"){
+      fetch("/api/projects/" + state.projectId + "/screens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          ord: i + 1,
+          headline: dup.headline,
+          subhead: dup.subhead || "",
+        }),
+      }).then(r=>r.json()).then(d=>{ if(d && d.screen && d.screen.id) dup.id = d.screen.id; }).catch(()=>{});
+    }
   }));
 }
 function escapeHtmlAttr(s){ return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
@@ -392,4 +409,12 @@ document.addEventListener("keydown", e=>{
     if(i < state.screens.length){ state.selected = i; render(); }
   } else if(e.key === "e" || e.key === "E"){ openLightbox(state.selected); }
 });
+if(typeof window !== "undefined"){
+  window.addEventListener("store:synced", ()=>{
+    syncBrandUI();
+    buildSizeBtns();
+    buildLeft();
+    renderStripOnly();
+  });
+}
 render();
