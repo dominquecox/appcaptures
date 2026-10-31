@@ -1,15 +1,14 @@
 // Worker API tests — plain node, no framework. Run: node tests/api.mjs
-// Loads the REAL worker.js (ESM source, evaluated with stub globals) and
-// drives fetch() with a fake D1 + fake queue. Waitlist behavior here is the
-// production contract: do not weaken these assertions to fit a change.
+// Loads worker.js as ESM (same as production bundling) and drives fetch() with
+// fake D1 + fake queue. Waitlist behavior here is the production contract.
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import worker from "../worker.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const src = readFileSync(path.join(root, "worker.js"), "utf8");
-const worker = new Function(`${src.replace("export default", "const __w =")}; return __w;`)();
 
 // Minimal fake D1: INSERT OR IGNORE (one row per email), ordinal COUNT, SELECT-all.
 // Mirrors tests/waitlist-position.mjs — the ordinal contract is production behavior.
@@ -60,6 +59,68 @@ const post = (p, body, env) =>
     req(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     env
   );
+const postWithCookie = (p, body, env, cookie) =>
+  worker.fetch(
+    req(p, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify(body),
+    }),
+    env
+  );
+
+async function createLegacyExportAuthEnv() {
+  const schemaSql = readFileSync(path.join(root, "schema-saas.sql"), "utf8");
+  const db = new DatabaseSync(":memory:");
+  db.exec("PRAGMA foreign_keys = ON;");
+  db.exec(schemaSql);
+  const userId = "legacy-queue-user";
+  db.prepare("INSERT INTO users (id, email, name, plan, status) VALUES (?, ?, ?, ?, ?)").run(
+    userId,
+    "legacy@example.com",
+    "Legacy",
+    "free",
+    "active"
+  );
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const rawToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+  const tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  db.prepare(
+    "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, datetime('now', '+30 days'))"
+  ).run(crypto.randomUUID(), userId, tokenHash);
+
+  const d1 = {
+    prepare(sql) {
+      return {
+        _bindings: [],
+        bind(...args) {
+          this._bindings = args;
+          return this;
+        },
+        async run() {
+          db.prepare(sql).run(...this._bindings);
+          return { success: true };
+        },
+        async first() {
+          return db.prepare(sql).get(...this._bindings) || null;
+        },
+        async all() {
+          return { results: db.prepare(sql).all(...this._bindings) };
+        },
+      };
+    },
+  };
+
+  return {
+    env: { DB: d1 },
+    cookie: `appcaptures_session=${rawToken}`,
+  };
+}
 
 // --- waitlist contract (production) ---
 {
@@ -181,19 +242,26 @@ const post = (p, body, env) =>
 
 // --- exports: validation now, queue later ---
 {
-  const sent = [];
-  const env = { EXPORT_QUEUE: { send: async (m) => sent.push(m) } };
+  const sentLegacy = [];
+  const { env, cookie } = await createLegacyExportAuthEnv();
+  env.EXPORT_QUEUE = { send: async (m) => sentLegacy.push(m) };
   let r = await post("/api/exports", {}, env);
-  assert.equal(r.status, 400);
+  assert.equal(r.status, 401);
   r = await post("/api/exports", { appId: "v", size: "1320x2868", screens: [{}, {}] }, {});
-  assert.equal(r.status, 501);
-  r = await post("/api/exports", { appId: "v", size: "1320x2868", screens: [{}, {}] }, env);
+  assert.equal(r.status, 401);
+  r = await postWithCookie(
+    "/api/exports",
+    { appId: "v", size: "1320x2868", screens: [{}, {}] },
+    env,
+    cookie
+  );
   assert.equal(r.status, 200);
   const b = await r.json();
   assert.equal(b.ok, true);
   assert.equal(b.status, "queued");
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].id, b.id);
+  assert.equal(sentLegacy.length, 1);
+  assert.equal(sentLegacy[0].id, b.id);
+  assert.equal(sentLegacy[0].user_id, "legacy-queue-user");
 }
 
 console.log("api: all assertions passed");

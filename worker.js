@@ -3,6 +3,9 @@
 // routes answer 503 and the client keeps its localStorage fallback (see index.html).
 // Mini-side setup: wrangler d1 create appcaptures_db -> paste block into wrangler.jsonc
 // -> wrangler d1 execute appcaptures_db --file schema.sql -> deploy.
+// Signed export downloads require DOWNLOAD_SECRET (>= 32 chars):
+//   wrangler secret put DOWNLOAD_SECRET
+// Local dev: see .dev.vars.example (placeholder only).
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -65,6 +68,101 @@ async function authenticateSession(req, env) {
   ).bind(tokenHash).first();
   return row || null;
 }
+
+const exportCache = new Map();
+
+function downloadSigningConfigured(env) {
+  const secret = env && env.DOWNLOAD_SECRET;
+  return typeof secret === "string" && secret.length >= 32;
+}
+
+function parseExportExpiresMs(expiresAt) {
+  if (expiresAt == null || expiresAt === "") {
+    throw new Error("missing expiresAt");
+  }
+  if (typeof expiresAt === "number") {
+    if (!Number.isFinite(expiresAt)) throw new Error("invalid expiresAt");
+    return expiresAt;
+  }
+  if (typeof expiresAt === "string") {
+    const trimmed = expiresAt.trim();
+    if (!trimmed) throw new Error("invalid expiresAt");
+    const iso =
+      trimmed.includes("T") || trimmed.endsWith("Z")
+        ? trimmed
+        : `${trimmed.replace(" ", "T")}Z`;
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) throw new Error("invalid expiresAt");
+    return parsed;
+  }
+  throw new Error("invalid expiresAt");
+}
+
+function hexToBytes(hex) {
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+async function importDownloadHmacKey(env) {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    "raw",
+    enc.encode(env.DOWNLOAD_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+let _exportBundle = null;
+async function getExportBundle() {
+  if (!_exportBundle) {
+    _exportBundle = await import("./engine/export-bundle.js");
+  }
+  return _exportBundle;
+}
+
+async function generateDownloadToken(exportId, expiresAt, env, maxExpiresAt = expiresAt) {
+  if (!downloadSigningConfigured(env)) {
+    throw new Error("download signing not configured");
+  }
+  const exportExpMs = parseExportExpiresMs(maxExpiresAt);
+  let expTs = parseExportExpiresMs(expiresAt);
+  if (expTs > exportExpMs) expTs = exportExpMs;
+  if (expTs <= Date.now()) throw new Error("expiresAt in the past");
+
+  const enc = new TextEncoder();
+  const key = await importDownloadHmacKey(env);
+  const payload = `${exportId}:${expTs}`;
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  const hex = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${expTs}.${hex}`;
+}
+
+async function verifyDownloadToken(exportId, token, env) {
+  if (!downloadSigningConfigured(env)) return false;
+  if (!token || typeof token !== "string") return false;
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+  const [expTsStr, hex] = parts;
+  const expTs = Number(expTsStr);
+  if (!Number.isFinite(expTs) || expTs <= Date.now()) return false;
+
+  const sigBytes = hexToBytes(hex);
+  if (!sigBytes) return false;
+
+  const enc = new TextEncoder();
+  const key = await importDownloadHmacKey(env);
+  const payload = `${exportId}:${expTsStr}`;
+  return crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payload));
+}
+
 
 // Bounded JSON body: Content-Length fast-path, then a capped stream read so a
 // lying header can't buffer unbounded data into Worker memory. Rejects
@@ -146,12 +244,7 @@ let _aiAdapter;
 async function getAIAdapter(env) {
   if (env && env.AI_ADAPTER) return env.AI_ADAPTER;
   if (!_aiAdapter) {
-    try {
-      _aiAdapter = await import("./engine/ai-adapter.js");
-    } catch {
-      const testFallback = "../engine/ai-adapter.js";
-      _aiAdapter = await import(testFallback);
-    }
+    _aiAdapter = await import("./engine/ai-adapter.js");
   }
   return _aiAdapter;
 }
@@ -1117,19 +1210,289 @@ export default {
     if (url.pathname === "/api/exports" && req.method === "POST") {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
+
       const identifier = await getRequestIdentifier(req, env);
       const rl = await checkRateLimit(identifier, "render_export", RATE_LIMIT_TIERS.render_export, env);
       if (!rl.success) return rateLimitResponse(rl.retryAfter);
-      const appId = String(body.appId || "").trim().slice(0, 40);
-      const size = String(body.size || "");
-      const n = Array.isArray(body.screens) ? body.screens.length : 0;
-      if (!appId || !/^\d+x\d+$/.test(size) || n < 1 || n > 10) {
-        return json({ error: "need appId, size WxH, screens[1..10]" }, 400);
+
+      // Legacy queue-only export (appId + size + screens, no projectId)
+      if (!body.projectId && (body.appId || !env.DB)) {
+        const appId = String(body.appId || "").trim().slice(0, 40);
+        const size = String(body.size || "");
+        const n = Array.isArray(body.screens) ? body.screens.length : 0;
+        if (!appId || !/^\d+x\d+$/.test(size) || n < 1 || n > 10) {
+          return json({ error: "need appId, size WxH, screens[1..10]" }, 400);
+        }
+        if (!env.DB) return json({ error: "unauthorized" }, 401);
+        const legacyUser = await authenticateSession(req, env);
+        if (!legacyUser) return json({ error: "unauthorized" }, 401);
+        if (!env.EXPORT_QUEUE) return json({ ok: false, error: "export queue not configured" }, 501);
+        const id = crypto.randomUUID();
+        await env.EXPORT_QUEUE.send({
+          id,
+          appId,
+          size,
+          screens: n,
+          user_id: legacyUser.id,
+          at: Date.now(),
+        });
+        return json({ ok: true, id, status: "queued" });
       }
-      if (!env.EXPORT_QUEUE) return json({ ok: false, error: "export queue not configured" }, 501);
-      const id = crypto.randomUUID();
-      await env.EXPORT_QUEUE.send({ id, appId, size, screens: n, at: Date.now() });
-      return json({ ok: true, id, status: "queued" });
+
+      if (!env.DB) return json({ error: "no db" }, 503);
+
+      // Authenticate user session
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      // Validate inputs
+      const projectId = String(body.projectId || "").trim();
+      if (!projectId) return json({ error: "need projectId" }, 400);
+
+      const store = String(body.store || "both").trim().toLowerCase();
+      if (!["both", "apple", "ios", "google_play", "android"].includes(store)) {
+        return json({ error: "invalid store" }, 400);
+      }
+
+      // Check project belongs to user and is not archived
+      const project = await env.DB.prepare(
+        "SELECT id, user_id, name, platforms_json, brand_json, archived_at FROM projects WHERE id = ? AND archived_at IS NULL"
+      ).bind(projectId).first();
+
+      if (!project || project.user_id !== user.id) {
+        return json({ error: "project not found" }, 404);
+      }
+
+      if (!downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+
+      // Check user plan: free gets watermarked = 1, paid gets watermarked = 0
+      const isPaid = user.plan === "pro" || user.plan === "lifetime";
+      const watermarked = isPaid ? 0 : 1;
+
+      // Fetch screens
+      const screensResult = await env.DB.prepare(
+        "SELECT id, project_id, ord, capture_r2_key, headline, subhead, locale FROM screens WHERE project_id = ? ORDER BY ord ASC"
+      ).bind(projectId).all();
+      const screens = (screensResult && screensResult.results) || [];
+
+      // Fetch listing
+      const listing = await env.DB.prepare(
+        "SELECT id, project_id, store, locale, fields_json FROM listings WHERE project_id = ? LIMIT 1"
+      ).bind(projectId).first();
+
+      // Build per-store ZIP bundle
+      const { buildStoreZipBundle } = await getExportBundle();
+      const zipBytes = buildStoreZipBundle({
+        project,
+        screens,
+        listing,
+        watermarked: watermarked === 1,
+        store,
+        includeCopy: body.includeCopy !== false,
+      });
+
+      const exportId = crypto.randomUUID();
+      const r2Key = `u/${user.id}/exports/${exportId}.zip`;
+
+      // Storage: R2 or fallback cache
+      const bucket = env.EXPORTS || env.ASSETS;
+      if (bucket && typeof bucket.put === "function") {
+        await bucket.put(r2Key, zipBytes, { httpMetadata: { contentType: "application/zip" } });
+      }
+      exportCache.set(exportId, { data: zipBytes, r2Key, userId: user.id });
+
+      // Queue integration
+      if (env.EXPORT_QUEUE && typeof env.EXPORT_QUEUE.send === "function") {
+        try {
+          await env.EXPORT_QUEUE.send({
+            id: exportId,
+            userId: user.id,
+            projectId: project.id,
+            store,
+            watermarked: watermarked === 1,
+            r2Key,
+            at: Date.now(),
+          });
+        } catch {}
+      }
+
+      // Insert record into D1 exports
+      await env.DB.prepare(
+        "INSERT INTO exports (id, user_id, project_id, kind, r2_key, watermarked, status, expires_at) VALUES (?, ?, ?, 'zip', ?, ?, 'ready', datetime('now', '+7 days'))"
+      ).bind(exportId, user.id, project.id, r2Key, watermarked).run();
+
+      const expRow = await env.DB.prepare("SELECT expires_at FROM exports WHERE id = ?").bind(exportId).first();
+      if (!expRow || !expRow.expires_at) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      const expiresAt = expRow.expires_at;
+
+      let downloadToken;
+      try {
+        downloadToken = await generateDownloadToken(exportId, expiresAt, env, expiresAt);
+      } catch {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      const downloadUrl = `/api/exports/${exportId}/download?token=${downloadToken}`;
+
+      // Outbound email
+      if (env.RESEND_API_KEY) {
+        const fullDownloadUrl = `${url.origin}${downloadUrl}`;
+        try {
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "AppCaptures <appcaptures@ploonu.com>",
+              to: user.email,
+              reply_to: "support@appcaptures.com",
+              subject: "Your AppCaptures export is ready",
+              text: `Your export for "${project.name}" is ready to download:\n\n${fullDownloadUrl}\n\nThis download link will expire in 7 days.`,
+              html: `<p>Your export for <strong>${project.name}</strong> is ready to download:</p><p><a href="${fullDownloadUrl}">Download Store Assets</a></p><p>This link will expire in 7 days.</p>`,
+            }),
+          });
+        } catch {}
+      }
+
+      return json({
+        ok: true,
+        exportId,
+        downloadUrl,
+        watermarked: watermarked === 1,
+        status: "ready",
+        expiresAt,
+        expires_at: expiresAt,
+      });
+    }
+
+    const exportDownloadMatch = url.pathname.match(/^\/api\/exports\/([^\/]+)\/download$/);
+    if (exportDownloadMatch && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const exportId = exportDownloadMatch[1];
+
+      // Verifies session or valid download token
+      const user = await authenticateSession(req, env);
+      const token = url.searchParams.get("token");
+      if (token && !downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      const hasValidToken = token ? await verifyDownloadToken(exportId, token, env) : false;
+
+      if (!user && !hasValidToken) {
+        return json({ error: "unauthorized" }, 401);
+      }
+
+      const row = await env.DB.prepare(
+        `SELECT e.id, e.user_id, e.project_id, e.kind, e.r2_key, e.watermarked, e.status, e.expires_at, p.name AS project_name
+         FROM exports e
+         JOIN projects p ON p.id = e.project_id
+         WHERE e.id = ?`
+      ).bind(exportId).first();
+
+      if (!row) return json({ error: "export not found" }, 404);
+
+      // If user is session authenticated, enforce tenancy
+      if (user && row.user_id !== user.id) {
+        return json({ error: "export not found" }, 404);
+      }
+
+      // Checks expiry: datetime(expires_at) > datetime('now')
+      if (row.expires_at) {
+        const checkExp = await env.DB.prepare(
+          "SELECT (datetime(?) <= datetime('now')) AS is_expired"
+        ).bind(row.expires_at).first();
+        if (checkExp && checkExp.is_expired) {
+          return json({ error: "export expired" }, 410);
+        }
+      }
+
+      // Retrieve binary data from R2 or fallback cache
+      let binaryData = null;
+      const bucket = env.EXPORTS || env.ASSETS;
+      if (bucket && typeof bucket.get === "function" && row.r2_key) {
+        const obj = await bucket.get(row.r2_key);
+        if (obj) {
+          binaryData = await obj.arrayBuffer();
+        }
+      }
+
+      if (!binaryData) {
+        const cached = exportCache.get(exportId);
+        if (cached && cached.data) {
+          binaryData = cached.data;
+        }
+      }
+
+      if (!binaryData) {
+        return json({ error: "export binary not found" }, 404);
+      }
+
+      const safeProjectName = String(row.project_name || "store")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "") || "store";
+
+      return new Response(binaryData, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${safeProjectName}-store-assets.zip"`,
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+        },
+      });
+    }
+
+    const exportDetailMatch = url.pathname.match(/^\/api\/exports\/([^\/]+)$/);
+    if (exportDetailMatch && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const exportId = exportDetailMatch[1];
+
+      // Authenticates user session
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      const row = await env.DB.prepare(
+        `SELECT e.id, e.user_id, e.project_id, e.kind, e.r2_key, e.watermarked, e.status, e.created_at, e.expires_at, p.name AS project_name
+         FROM exports e
+         JOIN projects p ON p.id = e.project_id
+         WHERE e.id = ?`
+      ).bind(exportId).first();
+
+      if (!row || row.user_id !== user.id) {
+        return json({ error: "export not found" }, 404);
+      }
+
+      if (!downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      if (!row.expires_at) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+
+      let downloadToken;
+      try {
+        downloadToken = await generateDownloadToken(row.id, row.expires_at, env, row.expires_at);
+      } catch {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      const downloadUrl = `/api/exports/${row.id}/download?token=${downloadToken}`;
+
+      return json({
+        ok: true,
+        id: row.id,
+        exportId: row.id,
+        status: row.status,
+        downloadUrl,
+        expires_at: row.expires_at,
+        expiresAt: row.expires_at,
+        watermarked: row.watermarked === 1,
+      });
     }
     return json({ error: "not found" }, 404);
   },

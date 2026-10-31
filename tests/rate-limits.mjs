@@ -143,8 +143,25 @@ const post = (url, body, env, ip = "127.0.0.1", headers = {}) =>
 // --- 4. POST /api/exports (tier render_export: 30 per 60s) ---
 {
   worker.resetRateLimits();
+  const db = createD1();
   const queueItems = [];
-  const env = { EXPORT_QUEUE: { send: async (m) => queueItems.push(m) } };
+  const env = {
+    DB: db,
+    EXPORT_QUEUE: { send: async (m) => queueItems.push(m) },
+  };
+  const userId = "export-rate-user";
+  const rawToken = "export_rate_session_token_012345678901234567890";
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(rawToken));
+  const tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  db.rawDb.prepare("INSERT INTO users (id, email, status, plan) VALUES (?, ?, 'active', 'free')").run(
+    userId,
+    "export-rate@example.com"
+  );
+  db.rawDb.prepare(
+    "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, datetime('now', '+30 days'))"
+  ).run("sess-export-rate", userId, tokenHash);
+  const cookieHeader = { Cookie: `appcaptures_session=${rawToken}` };
   const clientIp = "192.168.10.4";
 
   for (let i = 1; i <= 30; i++) {
@@ -152,7 +169,8 @@ const post = (url, body, env, ip = "127.0.0.1", headers = {}) =>
       "/api/exports",
       { appId: "vidiloop", size: "1320x2868", screens: [{}] },
       env,
-      clientIp
+      clientIp,
+      cookieHeader
     );
     assert.equal(r.status, 200, `Request ${i} must succeed with 200`);
     const b = await r.json();
@@ -166,7 +184,8 @@ const post = (url, body, env, ip = "127.0.0.1", headers = {}) =>
     "/api/exports",
     { appId: "vidiloop", size: "1320x2868", screens: [{}] },
     env,
-    clientIp
+    clientIp,
+    cookieHeader
   );
   assert.equal(r31.status, 429, "31st request must return 429");
   const b31 = await r31.json();
