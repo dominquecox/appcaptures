@@ -28,8 +28,8 @@ function createD1() {
         },
         async run() {
           const stmt = db.prepare(sql);
-          stmt.run(...this._bindings);
-          return { success: true };
+          const info = stmt.run(...this._bindings);
+          return { success: true, meta: { changes: info.changes }, changes: info.changes };
         },
         async first() {
           const stmt = db.prepare(sql);
@@ -229,6 +229,37 @@ const post = (url, body, env, headers = {}) =>
     assert.equal(body2.user.id, body.user.id, "Must retain original user id");
     const userCount = db.rawDb.prepare("SELECT COUNT(*) AS c FROM users WHERE email = ?").get("founder@ploonu.com");
     assert.equal(userCount.c, 1, "Must not create duplicate user row on re-login");
+
+    // Test safe redirect paths (must start with "/" and NOT "//")
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=/app`), env);
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get("Location"), "/app");
+
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=/app/settings`), env);
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get("Location"), "/app/settings");
+
+    // Open redirect attempt with "//evil.com" must NOT redirect to //evil.com (returns 200 json)
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=//evil.com`), env);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("Location"), null);
+
+    // Open redirect attempt with "https://evil.com" must NOT redirect to external host
+    extractedToken = null;
+    await post("/api/auth/magic-link", { email: "founder@ploonu.com" }, env);
+    assert.ok(extractedToken);
+    r = await worker.fetch(req(`/api/auth/callback?token=${extractedToken}&redirect=https://evil.com`), env);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("Location"), null);
   } finally {
     globalThis.fetch = originalFetch;
   }
