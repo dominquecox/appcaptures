@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AppCaptures — App Store Screenshot Studio</title>
+<meta name="theme-color" content="#0b0914" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="AppCaptures" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Hanken+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+:root{--primary:#7c5cff;--primary-2:#603ce2;--bg:#0b0914;--surface:#161329;--line:#211c3d;--on-surface:#e5e2e3}
+html,body{margin:0;background:var(--bg);color:#0f172a;font:13px/1.5 Inter,ui-sans-system,-apple-system,sans-serif}
+a{color:var(--primary)}
+.header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.header h1{margin:0;font-size:14px;font-weight:800;letter-spacing:-0.02em;color:#fff;line-height:1}
+.header h1 span{font-weight:600;color:#9aa3b8}
+.header .sub{color:#9aa3b8;font-size:11px;margin-top:3px;line-height:1.4}
+.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.btn{appearance:none;border:1px solid #2a2450;background:#161329;color:#e5e7eb;padding:10px 13px;border-radius:9px;font-weight:700;font-size:12px;cursor:pointer;min-height:36px}
+.btn:hover{border-color:#3a2f6a}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-2)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.badge{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#cabeff;background:#1a1633;border:1px solid #2a2450;padding:4px 8px;border-radius:999px}
+.select{appearance:none;background:#161329;border:1px solid #2a2450;color:#e5e7eb;padding:7px 26px 7px 10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer}
+.select:focus{outline:none;border-color:var(--primary)}
+.wrap-select{position:relative;display:inline-flex;align-items:center}
+.wrap-select::after{content:"▾";position:absolute;right:9px;color:#9aa3b8;pointer-events:none;font-size:10px}
+.layout{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 62px)}
+@media(max-width:980px){.layout{grid-template-columns:1fr}}
+.left{background:#0e0e0f;border-right:1px solid var(--line);padding:12px;overflow:auto}
+.panel{background:#161329;border:1px solid #2a2450;border-radius:12px;padding:10px;margin-bottom:10px}
+.panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#9aa3b8}
+.row{display:flex;gap:6px;align-items:center}
+.row > *{flex:1}
+.input, .select-full{width:100%;background:var(--bg);border:1px solid #2a2450;color:#e5e7eb;padding:7px 9px;border-radius:8px;font-size:12px;font-weight:600}
+.input:focus, .select-full:focus{outline:none;border-color:var(--primary)}
+.input-color{width:36px;height:30px;padding:2px;background:var(--bg);border:1px solid #2a2450;border-radius:8px}
+.label{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#9aa3b8;font-weight:700;display:block;margin-bottom:4px}
+.card-editor{background:#161329;border:1px solid #2a2450;border-radius:12px;padding:9px;margin-bottom:8px}
+.card-editor.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(124,92,255,.18)}
+.card-editor .mini{font-size:11px;padding:8px 10px;border-radius:8px;border:1px solid #2a2450;background:var(--bg);color:#cbd5e1;cursor:pointer;font-weight:700;min-height:32px}
+.card-editor .mini:hover{border-color:var(--primary);color:#fff}
+.preview-area{background:#000;padding:14px 14px 22px;overflow:auto}
+.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.preview-head h2{margin:0;color:#e5e7eb;font-size:12px;font-weight:800;letter-spacing:-0.01em}
+.preview-head p{margin:0;color:#94a3b8;font-size:11px}
+.sizes{display:flex;gap:5px;flex-wrap:wrap}
+.size-btn{font-size:10px;padding:8px 12px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#9aa3b8;cursor:pointer;font-weight:700;min-height:32px}
+.size-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.strip{display:flex;gap:12px;overflow:auto;padding:8px 4px 12px;scroll-snap-type:x mandatory}
+.screen-wrap{flex:0 0 auto;scroll-snap-align:start;display:flex;flex-direction:column;gap:6px;align-items:center}
+.screen-wrap .lab{font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:.02em;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen-frame{width:190px;height:412px;background:#fff;border-radius:16px;overflow:hidden;position:relative;box-shadow:0 8px 28px rgba(0,0,0,.45);border:3px solid rgba(124,92,255,.28);cursor:pointer}
+.screen-frame.selected{border-color:var(--primary);box-shadow:0 0 0 3px rgba(124,92,255,.34), 0 8px 28px rgba(0,0,0,.45)}
+.screen-frame canvas{width:100%;height:100%;display:block}
+.export-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.note{color:#94a3b8;font-size:10.5px;line-height:1.5;margin-top:10px;border:1px solid var(--line);background:#0e0e0f;padding:9px 10px;border-radius:10px}
+.pill{font-size:10px;padding:4px 8px;border-radius:999px;background:#161329;border:1px solid #2a2450;color:#9aa3b8}
+.screen-frame .zoom{position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:999px;border:1px solid #2a2450;background:rgba(11,9,20,.72);color:#e5e7eb;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
+.screen-wrap .screen-frame:hover .zoom,.screen-frame:focus-within .zoom{opacity:1}
+@media (hover:none){.screen-frame .zoom{opacity:1}}
+.screen-frame .zoom svg{width:16px;height:16px}
+button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+#lightbox{position:fixed;inset:0;z-index:60}
+#lightbox[hidden]{display:none}
+.lb-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.84)}
+.lb-figure{position:absolute;inset:0;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px}
+#lbCanvas{max-width:min(92vw,560px);max-height:76vh;width:auto;height:auto;background:#fff;border-radius:18px;border:3px solid rgba(124,92,255,.4)}
+.lb-cap{display:flex;gap:8px;align-items:center;color:#e5e7eb;font-size:12px;font-weight:700}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:999px;border:1px solid #2a2450;background:#161329;color:#fff;font-size:18px;line-height:1;cursor:pointer}
+#lbPrev{left:14px}#lbNext{right:14px}
+#lbClose{position:absolute;top:14px;right:14px;min-width:36px;height:36px;border-radius:9px;border:1px solid #2a2450;background:#161329;color:#fff;cursor:pointer;font-size:13px}
+</style>
+</head>
+<body>
+<div id="fileWarn" hidden style="background:#3f1d22;color:#ffc9ce;font:600 13px/1.5 Inter,sans-serif;padding:10px 14px;text-align:center">Studio modules need http — run <code>./tools/local.sh</code> from the repo root, then open <code>http://localhost:8347/app/</code>. Double-clicking this file will not work.</div>
+<div class="header">
+  <div style="min-width:240px">
+    <h1>AppCaptures <span>— App Screenshots Studio</span></h1>
+    <div class="sub">Muse layout, any app. iOS / Android / RN. White card + brand border. Exports at exact store sizes. No Canva.</div>
+  </div>
+  <div class="controls">
+    <div class="wrap-select"><select id="appSelect" class="select">
+      <option value="vidiloop">Vidiloop — #7c5cff</option>
+      <option value="yaps">Yaps — #ff6b00</option>
+      <option value="typepress">TypePress — #0ea5e9</option>
+      <option value="generic">Generic — #2563eb</option>
+      <option value="custom">Custom…</option>
+    </select></div>
+    <div class="wrap-select"><select id="platformSelect" class="select">
+      <option value="ios">iOS App Store</option>
+      <option value="android">Google Play</option>
+      <option value="both">Both</option>
+      <option value="marketing">Marketing headers</option>
+      <option value="duo">iPhone Duo</option>
+    </select></div>
+    <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
+    <button class="btn" id="btnSave">Save</button>
+    <button class="btn ghost" id="btnResetAll" title="Clear saved studio state and reload fresh presets">Reset</button>
+    <button class="btn primary" id="btnExportAll">Export all</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="left">
+    <div class="panel" id="brandPanel">
+      <h3>Brand — per app</h3>
+      <label class="label">App name</label>
+      <input id="brandName" class="input" value="Vidiloop" maxlength="30" />
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label class="label">Primary</label>
+          <div class="row" style="gap:6px"><input id="brandPrimary" type="color" class="input-color" value="#7c5cff"><input id="brandPrimaryText" class="input" value="#7c5cff" style="flex:1"></div>
+        </div>
+        <div>
+          <label class="label">Page bg</label>
+          <div class="row" style="gap:6px"><input id="brandBg" type="color" class="input-color" value="#0b0914"><input id="brandBgText" class="input" value="#0b0914" style="flex:1"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label class="label">Headline font</label><select id="brandFont" class="select-full"><option value="Inter">Inter</option><option value="Hanken Grotesk">Hanken Grotesk</option></select></div>
+        <div><label class="label">Device frame</label><select id="deviceFrame" class="select-full"><option value="island">iOS Dynamic Island</option><option value="notch">Android notch</option><option value="minimal">Minimal (RN)</option></select></div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a2450">
+        <h3 style="margin:0 0 8px">Headline — per app</h3>
+        <div class="row" style="gap:8px">
+          <div>
+            <label class="label">Size <span id="headlineSizeVal" style="color:#e5e7eb;font-weight:800">50</span>px</label>
+            <input id="headlineSize" type="range" min="32" max="72" value="50" style="width:100%;accent-color:var(--primary)">
+          </div>
+          <div>
+            <label class="label">Weight</label>
+            <select id="headlineWeight" class="select-full"><option value="500">500</option><option value="600">600</option><option value="700" selected>700</option><option value="800">800</option></select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;gap:8px">
+          <div>
+            <label class="label">Color</label>
+            <div class="row" style="gap:6px"><input id="headlineColor" type="color" class="input-color" value="#0f172a"><input id="headlineColorText" class="input" value="#0f172a" style="flex:1"></div>
+          </div>
+          <div>
+            <label class="label">Align</label>
+            <select id="headlineAlign" class="select-full"><option value="center">Center</option><option value="left">Left</option></select>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn ghost" id="btnResetBrand" style="flex:1">Reset brand</button>
+        <button class="btn" id="btnAddScreen" style="flex:1">+ Add screen</button>
+      </div>
+    </div>
+    <div id="leftPanel"></div>
+  </div>
+  <div class="preview-area">
+    <div class="preview-head">
+      <div>
+        <h2 id="previewTitle">Preview — Vidiloop · iOS</h2>
+        <p id="previewSub">Black #0b0914 page · white cards with violet stroke. Tap a card to edit. 1–10 screens.</p>
+      </div>
+      <div class="sizes" id="sizeBtns"></div>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div id="lightbox" hidden>
+      <div class="lb-backdrop" data-k="lbclose"></div>
+      <figure class="lb-figure" role="dialog" aria-modal="true" aria-label="Enlarged screenshot preview">
+        <canvas id="lbCanvas"></canvas>
+        <figcaption class="lb-cap"><span id="lbCap"></span><span class="pill" id="lbSize"></span></figcaption>
+        <button class="lb-nav" id="lbPrev" aria-label="Previous screen">‹</button>
+        <button class="lb-nav" id="lbNext" aria-label="Next screen">›</button>
+        <button id="lbClose" aria-label="Close enlarged view">✕</button>
+      </figure>
+    </div>
+    <div class="export-row">
+      <button class="btn primary" id="btnExportAll2">Export all</button>
+      <button class="btn" id="btnExportSelected">Export selected</button>
+      <button class="btn" id="btnEnlarge">Enlarge selected</button>
+      <button class="btn" id="btnExportOther">Export other platform</button>
+      <span class="pill" id="countPill">8 screens</span>
+    </div>
+    <div class="note">
+      <b style="color:#e5e7eb">Agnostic Ploonu toggle:</b> Vidiloop (#7c5cff · #0b0914), <span style="color:#ff6b00">Yaps (#ff6b00 · #0d0b14)</span> from yaps.club, TypePress (#0ea5e9 · #0f172a), Generic or Custom. Switch apps — brand, headlines and samples swap instantly. Upload your own <span style="font-family:ui-monospace,monospace">screen.png</span> per slot. Exports PNG, RGB, no alpha.<br>
+      <b>Sizes:</b> iOS 1320×2868 (6.9"), 1290×2796, 1284×2778, 1206×2622, 2064×2752 iPad · Android 1080×1920, 1440×2560, 1080×2400
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+<script>if(location.protocol==="file:"){document.getElementById("fileWarn").hidden=false;}</script>
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){})})}</script>
+</body>
+</html>

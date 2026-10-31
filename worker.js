@@ -339,6 +339,237 @@ export default {
         { "Set-Cookie": "appcaptures_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" }
       );
     }
+    // --- Projects & Screens API (AC-007) ---
+    if (url.pathname === "/api/projects" && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const { results } = await env.DB.prepare(
+        "SELECT * FROM projects WHERE user_id = ? AND archived_at IS NULL ORDER BY updated_at DESC"
+      ).bind(user.id).all();
+      const projects = (results || []).map((p) => {
+        let platforms = [];
+        try { platforms = JSON.parse(p.platforms_json || "[]"); } catch {}
+        let brand = {};
+        try { brand = JSON.parse(p.brand_json || "{}"); } catch {}
+        const row = { ...p, platforms, brand };
+        delete row.platforms_json;
+        delete row.brand_json;
+        return row;
+      });
+      return json({ ok: true, projects });
+    }
+    if (url.pathname === "/api/projects" && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const name = (body.name && String(body.name).trim()) ? String(body.name).trim() : "Untitled App";
+      const platforms = body.platforms ?? [];
+      const brand = body.brand ?? {};
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        "INSERT INTO projects (id, user_id, name, platforms_json, brand_json) VALUES (?, ?, ?, ?, ?)"
+      ).bind(id, user.id, name, JSON.stringify(platforms), JSON.stringify(brand)).run();
+
+      if (Array.isArray(body.screens) && body.screens.length > 0) {
+        for (let i = 0; i < body.screens.length; i++) {
+          const s = body.screens[i];
+          const screenId = s.id || crypto.randomUUID();
+          const ord = typeof s.ord === "number" ? s.ord : i;
+          const headline = String(s.headline ?? "");
+          const subhead = String(s.subhead ?? "");
+          const locale = String(s.locale ?? "en-US");
+          const captureKey = s.capture_r2_key ? String(s.capture_r2_key) : null;
+          await env.DB.prepare(
+            "INSERT INTO screens (id, project_id, ord, capture_r2_key, headline, subhead, locale) VALUES (?, ?, ?, ?, ?, ?, ?)"
+          ).bind(screenId, id, ord, captureKey, headline, subhead, locale).run();
+        }
+      }
+
+      return json({ ok: true, project: { id, name, platforms, brand } }, 201);
+    }
+
+    const projectScreensMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/screens$/);
+    if (projectScreensMatch && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const projectId = projectScreensMatch[1];
+      const project = await env.DB.prepare(
+        "SELECT id FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!project) return json({ error: "project not found" }, 404);
+
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const id = crypto.randomUUID();
+      let ord = typeof body.ord === "number" ? body.ord : null;
+      if (ord === null) {
+        const maxOrdRow = await env.DB.prepare(
+          "SELECT MAX(ord) AS m FROM screens WHERE project_id = ?"
+        ).bind(projectId).first();
+        ord = (maxOrdRow && typeof maxOrdRow.m === "number") ? maxOrdRow.m + 1 : 0;
+      }
+      const headline = String(body.headline ?? "");
+      const subhead = String(body.subhead ?? "");
+      const locale = String(body.locale ?? "en-US");
+      const captureKey = body.capture_r2_key ? String(body.capture_r2_key) : null;
+
+      await env.DB.prepare(
+        "INSERT INTO screens (id, project_id, ord, capture_r2_key, headline, subhead, locale) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).bind(id, projectId, ord, captureKey, headline, subhead, locale).run();
+      await env.DB.prepare("UPDATE projects SET updated_at = datetime('now') WHERE id = ?").bind(projectId).run();
+
+      return json({ ok: true, screen: { id, project_id: projectId, ord, headline, subhead } }, 201);
+    }
+
+    const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectMatch && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const projectId = projectMatch[1];
+      const projectRow = await env.DB.prepare(
+        "SELECT * FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!projectRow) return json({ error: "project not found" }, 404);
+
+      let platforms = [];
+      try { platforms = JSON.parse(projectRow.platforms_json || "[]"); } catch {}
+      let brand = {};
+      try { brand = JSON.parse(projectRow.brand_json || "{}"); } catch {}
+      const project = { ...projectRow, platforms, brand };
+      delete project.platforms_json;
+      delete project.brand_json;
+
+      const { results: screens } = await env.DB.prepare(
+        "SELECT * FROM screens WHERE project_id = ? ORDER BY ord ASC"
+      ).bind(projectId).all();
+
+      return json({ ok: true, project, screens: screens || [] });
+    }
+    if (projectMatch && req.method === "PATCH") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const projectId = projectMatch[1];
+      const projectRow = await env.DB.prepare(
+        "SELECT id FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!projectRow) return json({ error: "project not found" }, 404);
+
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const updates = ["updated_at = datetime('now')"];
+      const bindings = [];
+      if (body.name !== undefined) {
+        updates.push("name = ?");
+        bindings.push(String(body.name).trim() || "Untitled App");
+      }
+      if (body.platforms !== undefined) {
+        updates.push("platforms_json = ?");
+        bindings.push(JSON.stringify(body.platforms));
+      }
+      if (body.brand !== undefined) {
+        updates.push("brand_json = ?");
+        bindings.push(JSON.stringify(body.brand));
+      }
+      bindings.push(projectId, user.id);
+      await env.DB.prepare(
+        `UPDATE projects SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`
+      ).bind(...bindings).run();
+
+      return json({ ok: true });
+    }
+    if (projectMatch && req.method === "DELETE") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const projectId = projectMatch[1];
+      const projectRow = await env.DB.prepare(
+        "SELECT id FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!projectRow) return json({ error: "project not found" }, 404);
+
+      await env.DB.prepare(
+        "UPDATE projects SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+      ).bind(projectId, user.id).run();
+
+      return json({ ok: true });
+    }
+
+    const screenMatch = url.pathname.match(/^\/api\/screens\/([^/]+)$/);
+    if (screenMatch && req.method === "PATCH") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const screenId = screenMatch[1];
+      const screenRow = await env.DB.prepare(
+        `SELECT s.id, s.project_id
+         FROM screens s
+         JOIN projects p ON p.id = s.project_id
+         WHERE s.id = ? AND p.user_id = ? AND p.archived_at IS NULL`
+      ).bind(screenId, user.id).first();
+      if (!screenRow) return json({ error: "screen not found" }, 404);
+
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const updates = [];
+      const bindings = [];
+      if (body.headline !== undefined) {
+        updates.push("headline = ?");
+        bindings.push(String(body.headline));
+      }
+      if (body.subhead !== undefined) {
+        updates.push("subhead = ?");
+        bindings.push(String(body.subhead));
+      }
+      if (body.ord !== undefined) {
+        updates.push("ord = ?");
+        bindings.push(Number(body.ord));
+      }
+      if (body.capture_r2_key !== undefined) {
+        updates.push("capture_r2_key = ?");
+        bindings.push(body.capture_r2_key ? String(body.capture_r2_key) : null);
+      }
+      if (body.locale !== undefined) {
+        updates.push("locale = ?");
+        bindings.push(String(body.locale));
+      }
+      if (updates.length > 0) {
+        bindings.push(screenId);
+        await env.DB.prepare(
+          `UPDATE screens SET ${updates.join(", ")} WHERE id = ?`
+        ).bind(...bindings).run();
+        await env.DB.prepare(
+          "UPDATE projects SET updated_at = datetime('now') WHERE id = ?"
+        ).bind(screenRow.project_id).run();
+      }
+
+      return json({ ok: true });
+    }
+    if (screenMatch && req.method === "DELETE") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const screenId = screenMatch[1];
+      const screenRow = await env.DB.prepare(
+        `SELECT s.id, s.project_id
+         FROM screens s
+         JOIN projects p ON p.id = s.project_id
+         WHERE s.id = ? AND p.user_id = ? AND p.archived_at IS NULL`
+      ).bind(screenId, user.id).first();
+      if (!screenRow) return json({ error: "screen not found" }, 404);
+
+      await env.DB.prepare("DELETE FROM screens WHERE id = ?").bind(screenId).run();
+      await env.DB.prepare(
+        "UPDATE projects SET updated_at = datetime('now') WHERE id = ?"
+      ).bind(screenRow.project_id).run();
+
+      return json({ ok: true });
+    }
     if (url.pathname === "/api/listing/generate" && req.method === "POST") {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
