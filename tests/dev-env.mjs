@@ -49,6 +49,9 @@ assert.equal(devDb.database_name, 'appcaptures_db_dev', 'env.dev database_name m
 const rootDb = wranglerConfig.d1_databases?.find((db) => db.binding === 'DB');
 assert.ok(rootDb, 'root configuration must bind DB');
 assert.notEqual(devDb.database_name, rootDb.database_name, 'dev database_name must be separate from prod');
+assert.notEqual(devDb.database_id, rootDb.database_id, 'dev and prod D1 database IDs must be different');
+assert.equal(devDb.database_id, '146a8e64-0d54-43d2-9c21-d39450d9ceb9', 'dev database_id must match created appcaptures_db_dev ID');
+assert.equal(rootDb.database_id, '28e9e076-f0ff-44d0-a272-046db1819fc1', 'prod database_id must match appcaptures_db ID');
 
 // Assets assertions
 assert.ok(devEnv.assets, 'env.dev.assets must exist');
@@ -86,6 +89,7 @@ assert.match(migrateContent, /set -euo pipefail/, 'tools/migrate.sh must set str
 assert.match(migrateContent, /--local/, 'tools/migrate.sh must support --local target');
 assert.match(migrateContent, /--dev/, 'tools/migrate.sh must support --dev target');
 assert.match(migrateContent, /--prod/, 'tools/migrate.sh must support --prod target');
+assert.match(migrateContent, /APPLY PRODUCTION MIGRATIONS/, 'tools/migrate.sh must require typed confirmation for --prod');
 assert.match(migrateContent, /wrangler d1 migrations apply/, 'tools/migrate.sh must call wrangler d1 migrations apply');
 
 // Check bash syntax of tools/migrate.sh

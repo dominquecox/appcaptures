@@ -386,9 +386,16 @@ export default {
         return json({ error: "invalid or expired token" }, 401);
       }
 
-      await env.DB.prepare(
-        "UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ?"
+      const updateRes = await env.DB.prepare(
+        "UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ? AND used_at IS NULL"
       ).bind(tokenHash).run();
+
+      const changes = (updateRes && updateRes.meta && typeof updateRes.meta.changes === "number")
+        ? updateRes.meta.changes
+        : (updateRes && typeof updateRes.changes === "number" ? updateRes.changes : 0);
+      if (changes === 0) {
+        return json({ error: "invalid or expired token" }, 401);
+      }
 
       let user = await env.DB.prepare(
         "SELECT id, email, name, plan, status FROM users WHERE email = ?"
@@ -418,11 +425,12 @@ export default {
       ).bind(sessionId, user.id, sessionTokenHash, ip, ua).run();
 
       const cookie = `appcaptures_session=${rawSessionToken}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`;
-      if (url.searchParams.get("redirect")) {
+      const redirect = url.searchParams.get("redirect");
+      if (redirect && /^\/(?![\/\\])[^\\]*$/.test(redirect)) {
         return new Response(null, {
           status: 302,
           headers: {
-            "Location": url.searchParams.get("redirect"),
+            "Location": redirect,
             "Set-Cookie": cookie,
             "Cache-Control": "no-store",
           },
