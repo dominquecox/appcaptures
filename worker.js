@@ -3,6 +3,9 @@
 // routes answer 503 and the client keeps its localStorage fallback (see index.html).
 // Mini-side setup: wrangler d1 create appcaptures_db -> paste block into wrangler.jsonc
 // -> wrangler d1 execute appcaptures_db --file schema.sql -> deploy.
+// Signed export downloads require DOWNLOAD_SECRET (>= 32 chars):
+//   wrangler secret put DOWNLOAD_SECRET
+// Local dev: see .dev.vars.example (placeholder only).
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -67,40 +70,73 @@ async function authenticateSession(req, env) {
 }
 
 const exportCache = new Map();
-const DOWNLOAD_SECRET_DEFAULT = "appcaptures-export-download-secret-key-v1";
+
+function downloadSigningConfigured(env) {
+  const secret = env && env.DOWNLOAD_SECRET;
+  return typeof secret === "string" && secret.length >= 32;
+}
+
+function parseExportExpiresMs(expiresAt) {
+  if (expiresAt == null || expiresAt === "") {
+    throw new Error("missing expiresAt");
+  }
+  if (typeof expiresAt === "number") {
+    if (!Number.isFinite(expiresAt)) throw new Error("invalid expiresAt");
+    return expiresAt;
+  }
+  if (typeof expiresAt === "string") {
+    const trimmed = expiresAt.trim();
+    if (!trimmed) throw new Error("invalid expiresAt");
+    const iso =
+      trimmed.includes("T") || trimmed.endsWith("Z")
+        ? trimmed
+        : `${trimmed.replace(" ", "T")}Z`;
+    const parsed = Date.parse(iso);
+    if (Number.isNaN(parsed)) throw new Error("invalid expiresAt");
+    return parsed;
+  }
+  throw new Error("invalid expiresAt");
+}
+
+function hexToBytes(hex) {
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+async function importDownloadHmacKey(env) {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    "raw",
+    enc.encode(env.DOWNLOAD_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
 
 let _exportBundle = null;
 async function getExportBundle() {
   if (!_exportBundle) {
-    try {
-      _exportBundle = await import("./engine/export-bundle.js");
-    } catch {
-      const altPath = "../engine/export-bundle.js";
-      _exportBundle = await import(altPath);
-    }
+    _exportBundle = await import("./engine/export-bundle.js");
   }
   return _exportBundle;
 }
 
-async function generateDownloadToken(exportId, expiresAt, env) {
-  const secretStr = (env && (env.DOWNLOAD_SECRET || env.ADMIN_TOKEN)) || DOWNLOAD_SECRET_DEFAULT;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secretStr),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  let expTs;
-  if (typeof expiresAt === "number") {
-    expTs = expiresAt;
-  } else if (typeof expiresAt === "string") {
-    const parsed = Date.parse(expiresAt.includes("Z") ? expiresAt : `${expiresAt}Z`);
-    expTs = Number.isNaN(parsed) ? Date.now() + 7 * 86400 * 1000 : parsed;
-  } else {
-    expTs = Date.now() + 7 * 86400 * 1000;
+async function generateDownloadToken(exportId, expiresAt, env, maxExpiresAt = expiresAt) {
+  if (!downloadSigningConfigured(env)) {
+    throw new Error("download signing not configured");
   }
+  const exportExpMs = parseExportExpiresMs(maxExpiresAt);
+  let expTs = parseExportExpiresMs(expiresAt);
+  if (expTs > exportExpMs) expTs = exportExpMs;
+  if (expTs <= Date.now()) throw new Error("expiresAt in the past");
+
+  const enc = new TextEncoder();
+  const key = await importDownloadHmacKey(env);
   const payload = `${exportId}:${expTs}`;
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
   const hex = Array.from(new Uint8Array(sig))
@@ -110,6 +146,7 @@ async function generateDownloadToken(exportId, expiresAt, env) {
 }
 
 async function verifyDownloadToken(exportId, token, env) {
+  if (!downloadSigningConfigured(env)) return false;
   if (!token || typeof token !== "string") return false;
   const parts = token.split(".");
   if (parts.length !== 2) return false;
@@ -117,27 +154,13 @@ async function verifyDownloadToken(exportId, token, env) {
   const expTs = Number(expTsStr);
   if (!Number.isFinite(expTs) || expTs <= Date.now()) return false;
 
-  const secretStr = (env && (env.DOWNLOAD_SECRET || env.ADMIN_TOKEN)) || DOWNLOAD_SECRET_DEFAULT;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secretStr),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const payload = `${exportId}:${expTsStr}`;
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  const expectedHex = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const sigBytes = hexToBytes(hex);
+  if (!sigBytes) return false;
 
-  if (hex.length !== expectedHex.length) return false;
-  let d = 0;
-  for (let i = 0; i < hex.length; i++) {
-    d |= hex.charCodeAt(i) ^ expectedHex.charCodeAt(i);
-  }
-  return d === 0;
+  const enc = new TextEncoder();
+  const key = await importDownloadHmacKey(env);
+  const payload = `${exportId}:${expTsStr}`;
+  return crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payload));
 }
 
 
@@ -221,12 +244,7 @@ let _aiAdapter;
 async function getAIAdapter(env) {
   if (env && env.AI_ADAPTER) return env.AI_ADAPTER;
   if (!_aiAdapter) {
-    try {
-      _aiAdapter = await import("./engine/ai-adapter.js");
-    } catch {
-      const altPath = "../engine/ai-adapter.js";
-      _aiAdapter = await import(altPath);
-    }
+    _aiAdapter = await import("./engine/ai-adapter.js");
   }
   return _aiAdapter;
 }
@@ -996,7 +1014,7 @@ export default {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
 
-      // Legacy fallback (preserves api.mjs queue tests without DB)
+      // Legacy queue-only export (appId + size + screens, no projectId)
       if (!body.projectId && (body.appId || !env.DB)) {
         const appId = String(body.appId || "").trim().slice(0, 40);
         const size = String(body.size || "");
@@ -1004,9 +1022,19 @@ export default {
         if (!appId || !/^\d+x\d+$/.test(size) || n < 1 || n > 10) {
           return json({ error: "need appId, size WxH, screens[1..10]" }, 400);
         }
+        if (!env.DB) return json({ error: "unauthorized" }, 401);
+        const legacyUser = await authenticateSession(req, env);
+        if (!legacyUser) return json({ error: "unauthorized" }, 401);
         if (!env.EXPORT_QUEUE) return json({ ok: false, error: "export queue not configured" }, 501);
         const id = crypto.randomUUID();
-        await env.EXPORT_QUEUE.send({ id, appId, size, screens: n, at: Date.now() });
+        await env.EXPORT_QUEUE.send({
+          id,
+          appId,
+          size,
+          screens: n,
+          user_id: legacyUser.id,
+          at: Date.now(),
+        });
         return json({ ok: true, id, status: "queued" });
       }
 
@@ -1032,6 +1060,10 @@ export default {
 
       if (!project || project.user_id !== user.id) {
         return json({ error: "project not found" }, 404);
+      }
+
+      if (!downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
       }
 
       // Check user plan: free gets watermarked = 1, paid gets watermarked = 0
@@ -1091,9 +1123,17 @@ export default {
       ).bind(exportId, user.id, project.id, r2Key, watermarked).run();
 
       const expRow = await env.DB.prepare("SELECT expires_at FROM exports WHERE id = ?").bind(exportId).first();
-      const expiresAt = expRow ? expRow.expires_at : new Date(Date.now() + 7 * 86400 * 1000).toISOString();
+      if (!expRow || !expRow.expires_at) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      const expiresAt = expRow.expires_at;
 
-      const downloadToken = await generateDownloadToken(exportId, expiresAt, env);
+      let downloadToken;
+      try {
+        downloadToken = await generateDownloadToken(exportId, expiresAt, env, expiresAt);
+      } catch {
+        return json({ error: "download signing not configured" }, 503);
+      }
       const downloadUrl = `/api/exports/${exportId}/download?token=${downloadToken}`;
 
       // Outbound email
@@ -1137,6 +1177,9 @@ export default {
       // Verifies session or valid download token
       const user = await authenticateSession(req, env);
       const token = url.searchParams.get("token");
+      if (token && !downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
+      }
       const hasValidToken = token ? await verifyDownloadToken(exportId, token, env) : false;
 
       if (!user && !hasValidToken) {
@@ -1224,7 +1267,19 @@ export default {
         return json({ error: "export not found" }, 404);
       }
 
-      const downloadToken = await generateDownloadToken(row.id, row.expires_at, env);
+      if (!downloadSigningConfigured(env)) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+      if (!row.expires_at) {
+        return json({ error: "download signing not configured" }, 503);
+      }
+
+      let downloadToken;
+      try {
+        downloadToken = await generateDownloadToken(row.id, row.expires_at, env, row.expires_at);
+      } catch {
+        return json({ error: "download signing not configured" }, 503);
+      }
       const downloadUrl = `/api/exports/${row.id}/download?token=${downloadToken}`;
 
       return json({

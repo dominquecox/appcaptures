@@ -14,6 +14,35 @@ import { checkDimensions, checkNoAlpha } from "../engine/render-loop.js";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const schemaSql = readFileSync(path.join(root, "schema-saas.sql"), "utf8");
 
+// Test-only signing secret (>= 32 chars). Never use in production.
+const TEST_DOWNLOAD_SECRET = "export-pipeline-test-download-secret-v1";
+
+function envWith(extra = {}) {
+  return { DOWNLOAD_SECRET: TEST_DOWNLOAD_SECRET, ...extra };
+}
+
+async function signDownloadTokenWithSecret(exportId, expiresAt, secret) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const iso =
+    typeof expiresAt === "string" && !expiresAt.includes("T")
+      ? `${expiresAt.replace(" ", "T")}Z`
+      : expiresAt;
+  const expTs = typeof expiresAt === "number" ? expiresAt : Date.parse(iso);
+  const payload = `${exportId}:${expTs}`;
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  const hex = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${expTs}.${hex}`;
+}
+
 // D1 wrapper backed by Node 22 in-memory SQLite (DatabaseSync)
 function createD1() {
   const db = new DatabaseSync(":memory:");
@@ -169,7 +198,7 @@ d1.rawDb.prepare("INSERT INTO projects (id, user_id, name, archived_at) VALUES (
 // Test 1: Unauthenticated requests return 401
 // -----------------------------------------------------------------------------
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
 
   // POST without session cookie
   let r = await post("/api/exports", { projectId: projectFree.id }, env);
@@ -190,7 +219,7 @@ d1.rawDb.prepare("INSERT INTO projects (id, user_id, name, archived_at) VALUES (
 // Test 2: Cross-tenant requests return 404
 // -----------------------------------------------------------------------------
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
 
   // Other user trying to export Free user's project
   let r = await post("/api/exports", { projectId: projectFree.id }, env, sessionOther.cookieHeader);
@@ -213,7 +242,7 @@ d1.rawDb.prepare("INSERT INTO projects (id, user_id, name, archived_at) VALUES (
 let freeExportId;
 let freeDownloadUrl;
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
   const r = await post("/api/exports", { projectId: projectFree.id, store: "both" }, env, sessionFree.cookieHeader);
   assert.equal(r.status, 200, "POST /api/exports should succeed");
   const b = await r.json();
@@ -250,7 +279,7 @@ let freeDownloadUrl;
 // Test 4: ZIP bundle contains structured store folders (ios/, android/, copy/)
 // -----------------------------------------------------------------------------
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
 
   // Download export via session cookie
   const r = await get(`/api/exports/${freeExportId}/download`, env, sessionFree.cookieHeader);
@@ -319,7 +348,7 @@ let freeDownloadUrl;
 let proExportId;
 let proDownloadUrl;
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
   const r = await post("/api/exports", { projectId: projectPro.id, store: "both" }, env, sessionPro.cookieHeader);
   assert.equal(r.status, 200, "Pro export must succeed");
   const b = await r.json();
@@ -357,7 +386,7 @@ let proDownloadUrl;
 // Test 6: GET /api/exports/:id returns export record
 // -----------------------------------------------------------------------------
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
 
   // Fetch Free export details
   let r = await get(`/api/exports/${freeExportId}`, env, sessionFree.cookieHeader);
@@ -385,7 +414,7 @@ let proDownloadUrl;
 // Test 7: GET /api/exports/:id/download token verification & expiration
 // -----------------------------------------------------------------------------
 {
-  const env = { DB: d1 };
+  const env = envWith({ DB: d1 });
 
   // Invalid or tampered token returns 401
   let r = await get(`/api/exports/${freeExportId}/download?token=invalid.token`, env);
@@ -448,12 +477,12 @@ let proDownloadUrl;
   };
 
   try {
-    const env = {
+    const env = envWith({
       DB: d1,
       EXPORTS: mockR2,
       EXPORT_QUEUE: mockQueue,
       RESEND_API_KEY: "re_mock_key_12345",
-    };
+    });
 
     const r = await post("/api/exports", { projectId: projectPro.id, store: "ios" }, env, sessionPro.cookieHeader);
     assert.equal(r.status, 200);
@@ -488,6 +517,55 @@ let proDownloadUrl;
   } finally {
     globalThis.fetch = origFetch;
   }
+}
+
+// -----------------------------------------------------------------------------
+// Test 9: Download signing fails closed without DOWNLOAD_SECRET
+// -----------------------------------------------------------------------------
+{
+  const envNoSecret = { DB: d1 };
+  const rCreate = await post(
+    "/api/exports",
+    { projectId: projectPro.id, store: "both" },
+    envNoSecret,
+    sessionPro.cookieHeader
+  );
+  assert.equal(rCreate.status, 503);
+  assert.deepEqual(await rCreate.json(), { error: "download signing not configured" });
+
+  const row = d1.rawDb.prepare("SELECT expires_at FROM exports WHERE id = ?").get(proExportId);
+  const legacyDefaultToken = await signDownloadTokenWithSecret(
+    proExportId,
+    row.expires_at,
+    "appcaptures-export-download-secret-key-v1"
+  );
+  let r = await get(`/api/exports/${proExportId}/download?token=${legacyDefaultToken}`, envNoSecret);
+  assert.ok(r.status === 401 || r.status === 503, "Legacy default-key token must be rejected");
+
+  const adminSignedToken = await signDownloadTokenWithSecret(
+    proExportId,
+    row.expires_at,
+    "admin-token-used-as-download-secret-32"
+  );
+  r = await get(`/api/exports/${proExportId}/download?token=${adminSignedToken}`, envWith({ DB: d1, ADMIN_TOKEN: "admin-token-used-as-download-secret-32" }));
+  assert.equal(r.status, 401, "ADMIN_TOKEN-signed download token must be rejected");
+
+  r = await get(proDownloadUrl, envNoSecret);
+  assert.ok(r.status === 401 || r.status === 503, "Signed URL must not work without DOWNLOAD_SECRET");
+}
+
+// -----------------------------------------------------------------------------
+// Test 10: Legacy POST /api/exports without session returns 401
+// -----------------------------------------------------------------------------
+{
+  const env = envWith({ DB: d1, EXPORT_QUEUE: { send: async () => {} } });
+  const r = await post(
+    "/api/exports",
+    { appId: "legacy-app", size: "1320x2868", screens: [{}, {}] },
+    env
+  );
+  assert.equal(r.status, 401);
+  assert.deepEqual(await r.json(), { error: "unauthorized" });
 }
 
 console.log("export-pipeline: all assertions passed");

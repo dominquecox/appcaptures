@@ -1,0 +1,5 @@
+# Local Wrangler secrets (copy to .dev.vars — never commit real values).
+# Production: wrangler secret put <NAME>
+
+# Export download URL HMAC (required for signed export links; >= 32 random chars)
+DOWNLOAD_SECRET=replace-with-wrangler-secret-put-download-secret
