@@ -249,6 +249,123 @@ async function getAIAdapter(env) {
   return _aiAdapter;
 }
 
+// Rate Limit Tiers (SPEC Section 3.3, AC-006)
+const RATE_LIMIT_TIERS = {
+  auth: { limit: 5, periodSeconds: 600 },           // 5 requests per 10 minutes (POST /api/auth/magic-link)
+  waitlist: { limit: 10, periodSeconds: 600 },      // 10 requests per 10 minutes (POST /api/waitlist)
+  ai: { limit: 20, periodSeconds: 3600 },           // 20 requests per hour (POST /api/listing/generate)
+  render_export: { limit: 30, periodSeconds: 60 },  // 30 requests per minute (POST /api/exports)
+};
+
+const rateLimitStore = new Map();
+
+function resetRateLimits() {
+  rateLimitStore.clear();
+}
+
+function getNow(env) {
+  if (env && env.__now !== undefined) {
+    return typeof env.__now === "function" ? env.__now() : Number(env.__now);
+  }
+  return Date.now();
+}
+
+function getClientIp(req) {
+  return (req && req.headers && req.headers.get("CF-Connecting-IP")) || "127.0.0.1";
+}
+
+async function getRequestIdentifier(req, env) {
+  if (env && env.DB) {
+    try {
+      const user = await authenticateSession(req, env);
+      if (user && user.id) return `user:${user.id}`;
+    } catch {}
+  }
+  return getClientIp(req);
+}
+
+function rateLimitResponse(retryAfter) {
+  return json(
+    { error: "too many requests", retryAfter },
+    429,
+    { "Retry-After": String(retryAfter) }
+  );
+}
+
+async function checkRateLimit(identifier, action, options, env = {}) {
+  let id = identifier;
+  if (id && typeof id === "object" && typeof id.headers?.get === "function") {
+    id = getClientIp(id);
+  }
+  if (!id || typeof id !== "string") {
+    id = "127.0.0.1";
+  }
+
+  const tier = options || RATE_LIMIT_TIERS[action] || { limit: 60, periodSeconds: 60 };
+  const limit = tier.limit;
+  const periodSeconds = tier.periodSeconds;
+
+  // 1. Cloudflare Rate Limiter binding if bound
+  if (env && env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === "function") {
+    try {
+      const res = await env.RATE_LIMITER.limit({ key: `${action}:${id}` });
+      if (res && res.success === false) {
+        const retryAfter = res.retryAfter || periodSeconds;
+        return { success: false, retryAfter };
+      }
+      return { success: true, retryAfter: 0 };
+    } catch (err) {
+      // If binding fails, fall through to sliding window
+    }
+  }
+
+  // 2. Sliding window tracker fallback (in-memory Map)
+  const key = `${action}:${id}`;
+  const now = getNow(env);
+  const periodMs = periodSeconds * 1000;
+  const cutoff = now - periodMs;
+
+  let timestamps = rateLimitStore.get(key) || [];
+  if (timestamps.length > 0) {
+    timestamps = timestamps.filter((t) => t > cutoff);
+  }
+
+  if (timestamps.length >= limit) {
+    const oldest = timestamps[0];
+    const msRemaining = Math.max(1000, (oldest + periodMs) - now);
+    const retryAfter = Math.ceil(msRemaining / 1000);
+    rateLimitStore.set(key, timestamps);
+
+    // Optional D1 logging when rate limit is exceeded
+    if (env && env.DB && env.LOG_RATE_LIMITS) {
+      try {
+        await env.DB.prepare(
+          "INSERT INTO rate_limit_logs (identifier, action, at) VALUES (?, ?, datetime('now'))"
+        ).bind(id, action).run();
+      } catch {}
+    }
+
+    return { success: false, retryAfter };
+  }
+
+  timestamps.push(now);
+  rateLimitStore.set(key, timestamps);
+
+  // Periodic cleanup if store grows large
+  if (rateLimitStore.size > 2000) {
+    for (const [k, v] of rateLimitStore.entries()) {
+      const active = v.filter((t) => t > cutoff);
+      if (active.length === 0) {
+        rateLimitStore.delete(k);
+      } else {
+        rateLimitStore.set(k, active);
+      }
+    }
+  }
+
+  return { success: true, retryAfter: 0 };
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -258,6 +375,8 @@ export default {
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      const rl = await checkRateLimit(getClientIp(req), "waitlist", RATE_LIMIT_TIERS.waitlist, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
       if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
         return json({ error: "forbidden" }, 403);
       }
@@ -298,6 +417,8 @@ export default {
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      const rl = await checkRateLimit(getClientIp(req), "auth", RATE_LIMIT_TIERS.auth, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
 
       if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
         return json({ error: "forbidden" }, 403);
@@ -358,9 +479,16 @@ export default {
         return json({ error: "invalid or expired token" }, 401);
       }
 
-      await env.DB.prepare(
-        "UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ?"
+      const updateRes = await env.DB.prepare(
+        "UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ? AND used_at IS NULL"
       ).bind(tokenHash).run();
+
+      const changes = (updateRes && updateRes.meta && typeof updateRes.meta.changes === "number")
+        ? updateRes.meta.changes
+        : (updateRes && typeof updateRes.changes === "number" ? updateRes.changes : 0);
+      if (changes === 0) {
+        return json({ error: "invalid or expired token" }, 401);
+      }
 
       let user = await env.DB.prepare(
         "SELECT id, email, name, plan, status FROM users WHERE email = ?"
@@ -390,11 +518,12 @@ export default {
       ).bind(sessionId, user.id, sessionTokenHash, ip, ua).run();
 
       const cookie = `appcaptures_session=${rawSessionToken}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`;
-      if (url.searchParams.get("redirect")) {
+      const redirect = url.searchParams.get("redirect");
+      if (redirect && /^\/(?![\/\\])[^\\]*$/.test(redirect)) {
         return new Response(null, {
           status: 302,
           headers: {
-            "Location": url.searchParams.get("redirect"),
+            "Location": redirect,
             "Set-Cookie": cookie,
             "Cache-Control": "no-store",
           },
@@ -882,6 +1011,11 @@ export default {
       const rawStore = body.store || body.platform;
       const store = normalizeStore(rawStore);
       const locale = String(body.locale || "en-US").trim();
+
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "ai", RATE_LIMIT_TIERS.ai, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
+      const appId = String(body.appId || "").trim().slice(0, 40);
       const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : null;
 
       // Legacy stub support when no DB is bound (for tests/api.mjs contract):
@@ -1010,9 +1144,76 @@ export default {
         },
       });
     }
+    if (url.pathname === "/api/post/generate" && req.method === "POST") {
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+
+      // Authenticates user session (fails closed with 401 if unauthorized)
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      if (!env.DB) return json({ error: "no db" }, 503);
+
+      // Validates body { projectId, platforms, tone, context }
+      const projectId = String(body.projectId || "").trim();
+      if (!projectId) return json({ error: "projectId required" }, 400);
+
+      let platforms = body.platforms;
+      if (!Array.isArray(platforms) || platforms.length === 0) {
+        platforms = ["twitter", "linkedin", "producthunt"];
+      } else {
+        platforms = platforms
+          .map((p) => String(p || "").toLowerCase().trim())
+          .filter((p) => ["twitter", "linkedin", "producthunt", "threads"].includes(p));
+        if (platforms.length === 0) {
+          platforms = ["twitter", "linkedin", "producthunt"];
+        }
+      }
+
+      const tone = String(body.tone || "launch").toLowerCase().trim() || "launch";
+      const context = String(body.context || "").trim();
+
+      // Verifies project belongs to authenticated user and is not archived (returns 404 if not found)
+      const project = await env.DB.prepare(
+        "SELECT id, user_id, name, platforms_json, brand_json, archived_at FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!project) return json({ error: "not found" }, 404);
+
+      // Fetches project name and brand info from D1 projects
+      const projectName = String(project.name || "").trim() || "App";
+      let brandInfo = {};
+      try {
+        brandInfo = JSON.parse(project.brand_json || "{}");
+      } catch {
+        brandInfo = {};
+      }
+
+      // Calls completeAI from engine/ai-adapter.js (or structured template / AI generator)
+      const { generateSocialPosts, completeAI } = await getAIAdapter(env);
+      const posts = await generateSocialPosts({
+        projectName,
+        brandInfo,
+        platforms,
+        tone,
+        context,
+        env,
+        completeAI,
+      });
+
+      // Returns json({ ok: true, projectId, posts: { twitter, linkedin, producthunt, threads } })
+      return json({
+        ok: true,
+        projectId,
+        posts,
+      });
+    }
     if (url.pathname === "/api/exports" && req.method === "POST") {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
+
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "render_export", RATE_LIMIT_TIERS.render_export, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
 
       // Legacy queue-only export (appId + size + screens, no projectId)
       if (!body.projectId && (body.appId || !env.DB)) {
@@ -1295,4 +1496,8 @@ export default {
     }
     return json({ error: "not found" }, 404);
   },
+  checkRateLimit,
+  resetRateLimits,
+  rateLimitStore,
+  RATE_LIMIT_TIERS,
 };

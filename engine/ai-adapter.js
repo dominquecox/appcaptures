@@ -1,4 +1,4 @@
-// Provider-Agnostic AI Adapter for AppCaptures (AC-009).
+// Provider-Agnostic AI Adapter for AppCaptures (AC-009, AC-010).
 // Routes to Cloudflare Workers AI with AI Gateway support, Gemini fallback,
 // and deterministic mock fallback for offline/test environments.
 
@@ -60,14 +60,12 @@ function hasImages(messages) {
 function parseJsonOutput(text) {
   if (typeof text !== "string") return text;
   let clean = text.trim();
-  // Strip markdown code fences if model wrapped in ```json ... ```
   if (clean.startsWith("```")) {
     clean = clean.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   }
   try {
     return JSON.parse(clean);
   } catch {
-    // If text contains a JSON object substring, try to isolate it
     const start = clean.indexOf("{");
     const end = clean.lastIndexOf("}");
     if (start !== -1 && end !== -1 && end > start) {
@@ -82,21 +80,221 @@ function parseJsonOutput(text) {
 }
 
 /**
+ * Sanitize domain name from project name for links.
+ */
+function sanitizeDomain(name) {
+  return String(name || "app")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 30) || "app";
+}
+
+/**
+ * Sanitizes and enforces Twitter launch tweet constraints:
+ * - Punchy launch tweet <= 280 characters.
+ * - Includes 1-2 relevant hashtags.
+ */
+export function sanitizeTwitterPost(raw, { projectName = "App", tone = "launch" } = {}) {
+  let text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) {
+    const domain = sanitizeDomain(projectName);
+    if (tone === "hype") {
+      text = `🔥 Big news! ${projectName} is officially live. Built to revolutionize how you work. Try it today: https://${domain}.com #launch #startup`;
+    } else if (tone === "story") {
+      text = `We spent months solving the biggest friction points in our workflow, and today we're launching ${projectName} for everyone. #buildinpublic #launch`;
+    } else if (tone === "minimal") {
+      text = `${projectName} is here. Fast, reliable, and simple. https://${domain}.com #launch #tools`;
+    } else {
+      text = `🚀 Excited to announce the launch of ${projectName}! Built to help you create, design, and ship faster than ever. #launch #startup`;
+    }
+  }
+
+  // Ensure 1-2 relevant hashtags
+  const tagMatches = text.match(/#\w+/g);
+  if (!tagMatches || tagMatches.length === 0) {
+    text = `${text} #launch #startup`;
+  } else if (tagMatches.length > 2) {
+    let count = 0;
+    text = text.replace(/#\w+/g, (match) => {
+      count++;
+      return count <= 2 ? match : "";
+    }).replace(/\s+/g, " ").trim();
+  }
+
+  // Ensure length <= 280 characters
+  if (text.length > 280) {
+    const tags = (text.match(/#\w+/g) || ["#launch"]).slice(0, 2).join(" ");
+    const maxBodyLen = 280 - tags.length - 1;
+    let body = text.replace(/#\w+/g, "").trim().slice(0, maxBodyLen).trim();
+    body = body.replace(/[,;:\-\s]+$/, "");
+    text = `${body} ${tags}`;
+    if (text.length > 280) {
+      text = text.slice(0, 280);
+    }
+  }
+
+  return text;
+}
+
+/**
+ * Sanitizes and enforces LinkedIn post constraints:
+ * - Professional announcement post highlighting value prop and problem solved.
+ * - Narrative structure (hook, problem, solution/value, highlights, call to action).
+ */
+export function sanitizeLinkedInPost(raw, { projectName = "App", tone = "launch", context = "", brandInfo = {} } = {}) {
+  let text = typeof raw === "string" ? raw.trim() : "";
+
+  const hasProblem = /problem|challenge|struggle|pain point|frustrat|why we built/i.test(text);
+  const hasValueOrSolution = /solution|value|help|feature|built|introducing|launching|announc/i.test(text);
+
+  if (!text || text.length < 60 || !hasProblem || !hasValueOrSolution) {
+    const valueProp = context || brandInfo.tagline || brandInfo.description || `${projectName} empowers teams to capture, create, and launch beautiful assets effortlessly.`;
+    text = `🚀 Excited to announce the official launch of ${projectName}!\n\n` +
+      `The Problem:\n` +
+      `For too long, creating polished marketing and app assets meant juggling multiple disconnected tools, dealing with rigid templates, and spending hours on repetitive formatting.\n\n` +
+      `The Solution:\n` +
+      `We built ${projectName} to change that. ${valueProp}\n\n` +
+      `Key Value & Highlights:\n` +
+      `• Streamlined workflow from concept to publication\n` +
+      `• High-performance exports tailored for every major platform\n` +
+      `• Intuitive, modern design built for creators and growing teams\n\n` +
+      `We'd love for you to try it out and share your thoughts. What features would you like to see next? Drop a comment below!`;
+  }
+
+  return text;
+}
+
+/**
+ * Sanitizes and enforces Product Hunt launch constraints:
+ * - Object: { tagline: "<= 60 chars", makerComment: "..." }
+ */
+export function sanitizeProductHunt(raw, { projectName = "App", tone = "launch", context = "" } = {}) {
+  let tagline = "";
+  let makerComment = "";
+
+  if (typeof raw === "object" && raw !== null) {
+    tagline = String(raw.tagline || "").trim();
+    makerComment = String(raw.makerComment || raw.comment || "").trim();
+  } else if (typeof raw === "string") {
+    tagline = raw.trim();
+  }
+
+  if (!tagline) {
+    if (tone === "minimal") {
+      tagline = `${projectName} – Clean and effortless workflow`.slice(0, 60);
+    } else if (tone === "hype") {
+      tagline = `${projectName} – The next-gen platform for builders`.slice(0, 60);
+    } else {
+      tagline = `${projectName} – Modern screenshot & app studio`.slice(0, 60);
+    }
+  }
+
+  // Strict <= 60 characters
+  if (tagline.length > 60) {
+    tagline = tagline.slice(0, 60).trim().replace(/[,;:\-\s]+$/, "");
+  }
+
+  if (!makerComment) {
+    makerComment = `Hey Product Hunt! 👋\n\nI'm so excited to share ${projectName} with you all today.\n\n${context || "We built this to eliminate the friction and repetitive work in our daily workflow. Our goal is to give makers and teams a powerful, beautiful platform that just works."}\n\nKey Highlights:\n• Lightning fast and intuitive\n• Zero complex setup\n• Designed with privacy and quality first\n\nI'd love to hear your thoughts, feedback, and questions in the comments below! Thank you for the support! 🚀`;
+  }
+
+  return {
+    tagline,
+    makerComment,
+  };
+}
+
+/**
+ * Sanitizes and enforces Threads post constraints:
+ * - Casual conversational post.
+ */
+export function sanitizeThreadsPost(raw, { projectName = "App", tone = "launch" } = {}) {
+  let text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) {
+    if (tone === "minimal") {
+      text = `${projectName} is live. check it out and let us know what you think 👀`;
+    } else if (tone === "hype") {
+      text = `finally dropped ${projectName} today!! 🔥\n\nbeen working on this non-stop and cannot wait for you all to try it. link in bio!`;
+    } else {
+      text = `we just launched ${projectName} today! 🚀\n\nbuilt something we genuinely wanted to use every day. would love your feedback — link in bio 👀`;
+    }
+  }
+  return text;
+}
+
+/**
+ * Sanitizes posts object for all requested platforms.
+ */
+export function sanitizeSocialPosts(rawPosts, {
+  projectName = "App",
+  brandInfo = {},
+  platforms = ["twitter", "linkedin", "producthunt"],
+  tone = "launch",
+  context = "",
+} = {}) {
+  const result = {};
+  const raw = typeof rawPosts === "object" && rawPosts !== null ? rawPosts : {};
+
+  for (const p of platforms) {
+    if (p === "twitter") {
+      result.twitter = sanitizeTwitterPost(raw.twitter, { projectName, tone });
+    } else if (p === "linkedin") {
+      result.linkedin = sanitizeLinkedInPost(raw.linkedin, { projectName, tone, context, brandInfo });
+    } else if (p === "producthunt") {
+      result.producthunt = sanitizeProductHunt(raw.producthunt, { projectName, tone, context });
+    } else if (p === "threads") {
+      result.threads = sanitizeThreadsPost(raw.threads, { projectName, tone });
+    }
+  }
+
+  return result;
+}
+
+/**
  * Deterministic mock fallback for offline tests and local development.
  */
 function runMockAI({ task, messages, schema }) {
-  let store = "ios";
+  let isSocial = task === "generate-posts";
   let appName = "App";
   let context = "";
+  let tone = "launch";
+  let platforms = ["twitter", "linkedin", "producthunt"];
 
+  for (const m of messages || []) {
+    const c = typeof m.content === "string" ? m.content : JSON.stringify(m.content || "");
+    if (/twitter|linkedin|producthunt|threads|launch post/i.test(c)) isSocial = true;
+    const nameMatch = c.match(/Project\s*Name:\s*([^\n,]+)/i) || c.match(/App\s*Name:\s*([^\n,]+)/i);
+    if (nameMatch) appName = nameMatch[1].trim();
+    const ctxMatch = c.match(/Context:\s*([^\n]+)/i);
+    if (ctxMatch) context = ctxMatch[1].trim();
+    const toneMatch = c.match(/Tone:\s*([^\n]+)/i);
+    if (toneMatch) tone = toneMatch[1].trim();
+    const platMatch = c.match(/Target Platforms:\s*([^\n]+)/i);
+    if (platMatch) {
+      platforms = platMatch[1].split(",").map((s) => s.trim().toLowerCase());
+    }
+  }
+
+  if (isSocial) {
+    const posts = sanitizeSocialPosts({}, {
+      projectName: appName,
+      platforms,
+      tone,
+      context,
+    });
+    return {
+      text: JSON.stringify(posts, null, 2),
+      data: posts,
+      ...posts,
+    };
+  }
+
+  // Store listing mock fallback (AC-009)
+  let store = "ios";
   for (const m of messages || []) {
     const c = typeof m.content === "string" ? m.content : JSON.stringify(m.content || "");
     if (/google|play|android/i.test(c)) store = "play";
     if (/apple|ios/i.test(c)) store = "ios";
-    const nameMatch = c.match(/App\s*Name:\s*([^\n,]+)/i);
-    if (nameMatch) appName = nameMatch[1].trim();
-    const ctxMatch = c.match(/Context\s*(?:&\s*Features)?:\s*([^\n]+)/i);
-    if (ctxMatch) context = ctxMatch[1].trim();
   }
 
   let mockData;
@@ -175,7 +373,7 @@ async function runGemini({ messages, schema, env }) {
  * Provider-agnostic AI completion engine.
  *
  * @param {Object} options
- * @param {string} [options.task] Task identifier (e.g. "generate-listing")
+ * @param {string} [options.task] Task identifier (e.g. "generate-posts", "generate-listing")
  * @param {Array} options.messages Chat messages array
  * @param {Object} [options.schema] Optional JSON schema or structured format description
  * @param {Object} [options.env] Cloudflare Worker environment bindings
@@ -217,7 +415,62 @@ export async function completeAI({ task, messages = [], schema = null, env = {} 
 }
 
 /**
- * Generates and sanitizes store listing copy based on app metadata and screenshots.
+ * Generates tailored launch posts for requested platforms.
+ */
+export async function generateSocialPosts({
+  projectName = "App",
+  brandInfo = {},
+  platforms = ["twitter", "linkedin", "producthunt"],
+  tone = "launch",
+  context = "",
+  env = {},
+  completeAI: customCompleteAI,
+}) {
+  const aiFunc = customCompleteAI || completeAI;
+
+  const prompt = `You are an expert social media and product marketing copywriter.
+Project Name: ${projectName}
+Tone: ${tone}
+Context: ${context || brandInfo.tagline || brandInfo.description || "A modern software platform built for high performance and exceptional user experience."}
+Brand Info: ${JSON.stringify(brandInfo)}
+Target Platforms: ${platforms.join(", ")}
+
+Generate tailored launch posts for the requested platforms:
+${platforms.includes("twitter") ? "- twitter: punchy launch tweet strictly <= 280 characters with 1-2 relevant hashtags." : ""}
+${platforms.includes("linkedin") ? "- linkedin: professional announcement post highlighting value proposition, problem solved, and key features." : ""}
+${platforms.includes("producthunt") ? '- producthunt: an object with "tagline" (strictly <= 60 characters) and "makerComment" (engaging maker introduction and invite for feedback).' : ""}
+${platforms.includes("threads") ? "- threads: casual, conversational launch post." : ""}
+
+Respond ONLY with a valid JSON object matching the requested platforms:
+{
+  ${platforms.includes("twitter") ? '"twitter": "...",' : ""}
+  ${platforms.includes("linkedin") ? '"linkedin": "...",' : ""}
+  ${platforms.includes("producthunt") ? '"producthunt": { "tagline": "...", "makerComment": "..." },' : ""}
+  ${platforms.includes("threads") ? '"threads": "..."' : ""}
+}`;
+
+  const aiResult = await aiFunc({
+    task: "generate-posts",
+    messages: [
+      { role: "system", content: "You are an expert product marketing copywriter. Output strict JSON only." },
+      { role: "user", content: prompt },
+    ],
+    schema: { type: "object" },
+    env,
+  });
+
+  const rawPosts = aiResult.data || aiResult;
+  return sanitizeSocialPosts(rawPosts, {
+    projectName,
+    brandInfo,
+    platforms,
+    tone,
+    context,
+  });
+}
+
+/**
+ * Generates and sanitizes store listing copy based on app metadata and screenshots (AC-009).
  */
 export async function generateListingCopy({
   store,

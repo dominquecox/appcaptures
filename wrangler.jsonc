@@ -37,7 +37,7 @@
 				{
 					"binding": "DB",
 					"database_name": "appcaptures_db_dev",
-					"database_id": "28e9e076-f0ff-44d0-a272-046db1819fc1", // dev D1 database id
+					"database_id": "146a8e64-0d54-43d2-9c21-d39450d9ceb9",
 					"remote": true
 				}
 			],
@@ -51,5 +51,6 @@
 	// "r2_buckets": [{ "binding": "EXPORTS", "bucket_name": "appcaptures-exports" }],
 	// "kv_namespaces": [{ "binding": "SESSIONS", "id": "PASTE_ID_HERE" }],
 	// "queues": { "producers": [{ "binding": "EXPORT_QUEUE", "queue": "appcaptures-exports" }] },
-	// "ai": { "binding": "AI" }
+	// "ai": { "binding": "AI" },
+	// "ratelimits": [{ "binding": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 100, "period": 60 } }]
 }
