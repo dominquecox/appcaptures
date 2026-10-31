@@ -53,16 +53,19 @@ function getCookieVal(setCookieHeader, name) {
   return match ? match[1] : null;
 }
 
+let ipCounter = 1;
 const req = (url, init) => new Request(`https://appcaptures.com${url}`, init);
-const post = (url, body, env, headers = {}) =>
-  worker.fetch(
+const post = (url, body, env, headers = {}) => {
+  const ip = headers["CF-Connecting-IP"] || `10.0.1.${ipCounter++}`;
+  return worker.fetch(
     req(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip, ...headers },
       body: JSON.stringify(body),
     }),
     env
   );
+};
 
 // --- 1. Requesting magic link ---
 {

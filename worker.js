@@ -155,6 +155,123 @@ async function getAIAdapter(env) {
   return _aiAdapter;
 }
 
+// Rate Limit Tiers (SPEC Section 3.3, AC-006)
+const RATE_LIMIT_TIERS = {
+  auth: { limit: 5, periodSeconds: 600 },           // 5 requests per 10 minutes (POST /api/auth/magic-link)
+  waitlist: { limit: 10, periodSeconds: 600 },      // 10 requests per 10 minutes (POST /api/waitlist)
+  ai: { limit: 20, periodSeconds: 3600 },           // 20 requests per hour (POST /api/listing/generate)
+  render_export: { limit: 30, periodSeconds: 60 },  // 30 requests per minute (POST /api/exports)
+};
+
+const rateLimitStore = new Map();
+
+function resetRateLimits() {
+  rateLimitStore.clear();
+}
+
+function getNow(env) {
+  if (env && env.__now !== undefined) {
+    return typeof env.__now === "function" ? env.__now() : Number(env.__now);
+  }
+  return Date.now();
+}
+
+function getClientIp(req) {
+  return (req && req.headers && req.headers.get("CF-Connecting-IP")) || "127.0.0.1";
+}
+
+async function getRequestIdentifier(req, env) {
+  if (env && env.DB) {
+    try {
+      const user = await authenticateSession(req, env);
+      if (user && user.id) return `user:${user.id}`;
+    } catch {}
+  }
+  return getClientIp(req);
+}
+
+function rateLimitResponse(retryAfter) {
+  return json(
+    { error: "too many requests", retryAfter },
+    429,
+    { "Retry-After": String(retryAfter) }
+  );
+}
+
+async function checkRateLimit(identifier, action, options, env = {}) {
+  let id = identifier;
+  if (id && typeof id === "object" && typeof id.headers?.get === "function") {
+    id = getClientIp(id);
+  }
+  if (!id || typeof id !== "string") {
+    id = "127.0.0.1";
+  }
+
+  const tier = options || RATE_LIMIT_TIERS[action] || { limit: 60, periodSeconds: 60 };
+  const limit = tier.limit;
+  const periodSeconds = tier.periodSeconds;
+
+  // 1. Cloudflare Rate Limiter binding if bound
+  if (env && env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === "function") {
+    try {
+      const res = await env.RATE_LIMITER.limit({ key: `${action}:${id}` });
+      if (res && res.success === false) {
+        const retryAfter = res.retryAfter || periodSeconds;
+        return { success: false, retryAfter };
+      }
+      return { success: true, retryAfter: 0 };
+    } catch (err) {
+      // If binding fails, fall through to sliding window
+    }
+  }
+
+  // 2. Sliding window tracker fallback (in-memory Map)
+  const key = `${action}:${id}`;
+  const now = getNow(env);
+  const periodMs = periodSeconds * 1000;
+  const cutoff = now - periodMs;
+
+  let timestamps = rateLimitStore.get(key) || [];
+  if (timestamps.length > 0) {
+    timestamps = timestamps.filter((t) => t > cutoff);
+  }
+
+  if (timestamps.length >= limit) {
+    const oldest = timestamps[0];
+    const msRemaining = Math.max(1000, (oldest + periodMs) - now);
+    const retryAfter = Math.ceil(msRemaining / 1000);
+    rateLimitStore.set(key, timestamps);
+
+    // Optional D1 logging when rate limit is exceeded
+    if (env && env.DB && env.LOG_RATE_LIMITS) {
+      try {
+        await env.DB.prepare(
+          "INSERT INTO rate_limit_logs (identifier, action, at) VALUES (?, ?, datetime('now'))"
+        ).bind(id, action).run();
+      } catch {}
+    }
+
+    return { success: false, retryAfter };
+  }
+
+  timestamps.push(now);
+  rateLimitStore.set(key, timestamps);
+
+  // Periodic cleanup if store grows large
+  if (rateLimitStore.size > 2000) {
+    for (const [k, v] of rateLimitStore.entries()) {
+      const active = v.filter((t) => t > cutoff);
+      if (active.length === 0) {
+        rateLimitStore.delete(k);
+      } else {
+        rateLimitStore.set(k, active);
+      }
+    }
+  }
+
+  return { success: true, retryAfter: 0 };
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -164,6 +281,8 @@ export default {
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      const rl = await checkRateLimit(getClientIp(req), "waitlist", RATE_LIMIT_TIERS.waitlist, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
       if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
         return json({ error: "forbidden" }, 403);
       }
@@ -204,6 +323,8 @@ export default {
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
       const email = String(body.email || "").trim().toLowerCase();
       if (!EMAIL_RE.test(email)) return json({ error: "bad email" }, 400);
+      const rl = await checkRateLimit(getClientIp(req), "auth", RATE_LIMIT_TIERS.auth, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
 
       if (env.ENV === "prod" && !env.TURNSTILE_SECRET) {
         return json({ error: "forbidden" }, 403);
@@ -788,6 +909,11 @@ export default {
       const rawStore = body.store || body.platform;
       const store = normalizeStore(rawStore);
       const locale = String(body.locale || "en-US").trim();
+
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "ai", RATE_LIMIT_TIERS.ai, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
+      const appId = String(body.appId || "").trim().slice(0, 40);
       const shots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : null;
 
       // Legacy stub support when no DB is bound (for tests/api.mjs contract):
@@ -919,6 +1045,9 @@ export default {
     if (url.pathname === "/api/exports" && req.method === "POST") {
       let body;
       try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "render_export", RATE_LIMIT_TIERS.render_export, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
       const appId = String(body.appId || "").trim().slice(0, 40);
       const size = String(body.size || "");
       const n = Array.isArray(body.screens) ? body.screens.length : 0;
@@ -932,4 +1061,8 @@ export default {
     }
     return json({ error: "not found" }, 404);
   },
+  checkRateLimit,
+  resetRateLimits,
+  rateLimitStore,
+  RATE_LIMIT_TIERS,
 };
