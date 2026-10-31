@@ -149,7 +149,8 @@ async function getAIAdapter(env) {
     try {
       _aiAdapter = await import("./engine/ai-adapter.js");
     } catch {
-      _aiAdapter = await import("../engine/ai-adapter.js");
+      const testFallback = "../engine/ai-adapter.js";
+      _aiAdapter = await import(testFallback);
     }
   }
   return _aiAdapter;
@@ -914,6 +915,69 @@ export default {
           locale: row.locale,
           fields,
         },
+      });
+    }
+    if (url.pathname === "/api/post/generate" && req.method === "POST") {
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+
+      // Authenticates user session (fails closed with 401 if unauthorized)
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      if (!env.DB) return json({ error: "no db" }, 503);
+
+      // Validates body { projectId, platforms, tone, context }
+      const projectId = String(body.projectId || "").trim();
+      if (!projectId) return json({ error: "projectId required" }, 400);
+
+      let platforms = body.platforms;
+      if (!Array.isArray(platforms) || platforms.length === 0) {
+        platforms = ["twitter", "linkedin", "producthunt"];
+      } else {
+        platforms = platforms
+          .map((p) => String(p || "").toLowerCase().trim())
+          .filter((p) => ["twitter", "linkedin", "producthunt", "threads"].includes(p));
+        if (platforms.length === 0) {
+          platforms = ["twitter", "linkedin", "producthunt"];
+        }
+      }
+
+      const tone = String(body.tone || "launch").toLowerCase().trim() || "launch";
+      const context = String(body.context || "").trim();
+
+      // Verifies project belongs to authenticated user and is not archived (returns 404 if not found)
+      const project = await env.DB.prepare(
+        "SELECT id, user_id, name, platforms_json, brand_json, archived_at FROM projects WHERE id = ? AND user_id = ? AND archived_at IS NULL"
+      ).bind(projectId, user.id).first();
+      if (!project) return json({ error: "not found" }, 404);
+
+      // Fetches project name and brand info from D1 projects
+      const projectName = String(project.name || "").trim() || "App";
+      let brandInfo = {};
+      try {
+        brandInfo = JSON.parse(project.brand_json || "{}");
+      } catch {
+        brandInfo = {};
+      }
+
+      // Calls completeAI from engine/ai-adapter.js (or structured template / AI generator)
+      const { generateSocialPosts, completeAI } = await getAIAdapter(env);
+      const posts = await generateSocialPosts({
+        projectName,
+        brandInfo,
+        platforms,
+        tone,
+        context,
+        env,
+        completeAI,
+      });
+
+      // Returns json({ ok: true, projectId, posts: { twitter, linkedin, producthunt, threads } })
+      return json({
+        ok: true,
+        projectId,
+        posts,
       });
     }
     if (url.pathname === "/api/exports" && req.method === "POST") {
