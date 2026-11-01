@@ -69,6 +69,58 @@ async function authenticateSession(req, env) {
   return row || null;
 }
 
+async function getUserCredits(userId, db) {
+  if (!db || !userId) return { balance: 0, lifetime_granted: 0, lifetime_spent: 0 };
+  const countRow = await db.prepare("SELECT COUNT(*) AS c FROM credit_ledger WHERE user_id = ?").bind(userId).first();
+  if (!countRow || countRow.c === 0) {
+    const userRow = await db.prepare("SELECT id, plan FROM users WHERE id = ?").bind(userId).first();
+    if (userRow) {
+      const grantId = crypto.randomUUID();
+      await db.prepare(
+        "INSERT INTO credit_ledger (id, user_id, delta, reason, ref) VALUES (?, ?, 5, 'welcome_bonus', 'signup')"
+      ).bind(grantId, userId).run();
+    }
+  }
+
+  const row = await db.prepare(
+    "SELECT COALESCE(SUM(delta), 0) AS balance, " +
+    "COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0) AS lifetime_granted, " +
+    "COALESCE(SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END), 0) AS lifetime_spent " +
+    "FROM credit_ledger WHERE user_id = ?"
+  ).bind(userId).first();
+
+  return {
+    balance: Number(row?.balance ?? 0),
+    lifetime_granted: Number(row?.lifetime_granted ?? 0),
+    lifetime_spent: Number(row?.lifetime_spent ?? 0),
+  };
+}
+
+async function checkAndDeductCredit(userId, amount = 1, reason, ref = null, db, plan = "free") {
+  if (!db) return { ok: true, balance: 0, bypass: true };
+  if (plan === "pro" && reason === "export") {
+    const credits = await getUserCredits(userId, db);
+    return { ok: true, balance: credits.balance, unlimited: true };
+  }
+  const credits = await getUserCredits(userId, db);
+  if (credits.balance < amount) {
+    return { ok: false, balance: credits.balance, required: amount };
+  }
+  const id = crypto.randomUUID();
+  await db.prepare(
+    "INSERT INTO credit_ledger (id, user_id, delta, reason, ref) VALUES (?, ?, ?, ?, ?)"
+  ).bind(id, userId, -amount, reason, ref ? String(ref) : null).run();
+  return { ok: true, balance: credits.balance - amount, deducted: amount };
+}
+
+async function refundCredit(userId, amount = 1, reason, ref = null, db) {
+  if (!db || !userId) return;
+  const id = crypto.randomUUID();
+  await db.prepare(
+    "INSERT INTO credit_ledger (id, user_id, delta, reason, ref) VALUES (?, ?, ?, ?, ?)"
+  ).bind(id, userId, amount, reason, ref ? String(ref) : null).run();
+}
+
 const exportCache = new Map();
 
 function downloadSigningConfigured(env) {
@@ -552,6 +604,7 @@ export default {
       if (!env.DB) return json({ error: "no db" }, 503);
       const user = await authenticateSession(req, env);
       if (!user) return json({ error: "unauthorized" }, 401);
+      const credits = await getUserCredits(user.id, env.DB);
       return json({
         ok: true,
         user: {
@@ -561,7 +614,45 @@ export default {
           plan: user.plan ?? "free",
           status: user.status ?? "active",
         },
+        credits: {
+          balance: credits.balance,
+          lifetime_granted: credits.lifetime_granted,
+          lifetime_spent: credits.lifetime_spent,
+        },
       });
+    }
+    if (url.pathname === "/api/credits" && req.method === "GET") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const credits = await getUserCredits(user.id, env.DB);
+      const history = await env.DB.prepare(
+        "SELECT id, delta, reason, ref, created_at FROM credit_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 50"
+      ).bind(user.id).all();
+      return json({
+        ok: true,
+        balance: credits.balance,
+        lifetime_granted: credits.lifetime_granted,
+        lifetime_spent: credits.lifetime_spent,
+        history: history?.results || [],
+      });
+    }
+    if (url.pathname === "/api/admin/credits" && req.method === "POST") {
+      if (!(await adminOk(req, env))) return json({ error: "forbidden" }, 403);
+      if (!env.DB) return json({ error: "no db" }, 503);
+      let body;
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+      const targetUserId = String(body.userId || "").trim();
+      const delta = parseInt(body.amount, 10);
+      const reason = String(body.reason || "admin_grant").trim();
+      if (!targetUserId || isNaN(delta) || delta === 0) {
+        return json({ error: "userId and non-zero amount required" }, 400);
+      }
+      await env.DB.prepare(
+        "INSERT INTO credit_ledger (id, user_id, delta, reason, ref) VALUES (?, ?, ?, ?, ?)"
+      ).bind(crypto.randomUUID(), targetUserId, delta, reason, body.ref ? String(body.ref) : "admin").run();
+      const updated = await getUserCredits(targetUserId, env.DB);
+      return json({ ok: true, userId: targetUserId, balance: updated.balance });
     }
     if (url.pathname === "/api/me" && req.method === "DELETE") {
       if (!env.DB) return json({ error: "no db" }, 503);
@@ -1045,19 +1136,37 @@ export default {
       ).bind(projectId, user.id).first();
       if (!project) return json({ error: "not found" }, 404);
 
+      const creditCheck = await checkAndDeductCredit(user.id, 1, "ai_listing", projectId, env.DB, user.plan);
+      if (!creditCheck.ok) {
+        return json({
+          error: "insufficient_credits",
+          message: "Credit balance depleted. Upgrade to Pro or purchase credit packs.",
+          balance: creditCheck.balance,
+          required: creditCheck.required,
+          plan: user.plan || "free",
+          upgrade_url: "/#pricing",
+        }, 402);
+      }
+
       const appName = String(body.appName || project.name || "").trim() || "App";
       const context = String(body.context || "");
       const screenshots = Array.isArray(body.screenshots) ? body.screenshots.slice(0, 10) : [];
 
       // Invokes AI adapter to generate title, subtitle/short, description, keywords/tags
-      const rawFields = await generateListingCopy({
-        store,
-        appName,
-        context,
-        locale,
-        screenshots,
-        env,
-      });
+      let rawFields;
+      try {
+        rawFields = await generateListingCopy({
+          store,
+          appName,
+          context,
+          locale,
+          screenshots,
+          env,
+        });
+      } catch (err) {
+        await refundCredit(user.id, 1, "refund_ai_listing_failed", projectId, env.DB);
+        throw err;
+      }
 
       // Applies code-enforced limits via sanitizeListing(store, rawFields)
       const fields = sanitizeListing(store, rawFields);
@@ -1090,6 +1199,7 @@ export default {
           locale,
           fields,
         },
+        credits_remaining: creditCheck.balance,
       });
     }
     const projectListingMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/listing$/);
@@ -1179,6 +1289,18 @@ export default {
       ).bind(projectId, user.id).first();
       if (!project) return json({ error: "not found" }, 404);
 
+      const creditCheck = await checkAndDeductCredit(user.id, 1, "ai_post", projectId, env.DB, user.plan);
+      if (!creditCheck.ok) {
+        return json({
+          error: "insufficient_credits",
+          message: "Credit balance depleted. Upgrade to Pro or purchase credit packs.",
+          balance: creditCheck.balance,
+          required: creditCheck.required,
+          plan: user.plan || "free",
+          upgrade_url: "/#pricing",
+        }, 402);
+      }
+
       // Fetches project name and brand info from D1 projects
       const projectName = String(project.name || "").trim() || "App";
       let brandInfo = {};
@@ -1190,21 +1312,28 @@ export default {
 
       // Calls completeAI from engine/ai-adapter.js (or structured template / AI generator)
       const { generateSocialPosts, completeAI } = await getAIAdapter(env);
-      const posts = await generateSocialPosts({
-        projectName,
-        brandInfo,
-        platforms,
-        tone,
-        context,
-        env,
-        completeAI,
-      });
+      let posts;
+      try {
+        posts = await generateSocialPosts({
+          projectName,
+          brandInfo,
+          platforms,
+          tone,
+          context,
+          env,
+          completeAI,
+        });
+      } catch (err) {
+        await refundCredit(user.id, 1, "refund_ai_post_failed", projectId, env.DB);
+        throw err;
+      }
 
       // Returns json({ ok: true, projectId, posts: { twitter, linkedin, producthunt, threads } })
       return json({
         ok: true,
         projectId,
         posts,
+        credits_remaining: creditCheck.balance,
       });
     }
     if (url.pathname === "/api/exports" && req.method === "POST") {
@@ -1270,6 +1399,20 @@ export default {
       // Check user plan: free gets watermarked = 1, paid gets watermarked = 0
       const isPaid = user.plan === "pro" || user.plan === "lifetime";
       const watermarked = isPaid ? 0 : 1;
+
+      if (!isPaid) {
+        const creditCheck = await checkAndDeductCredit(user.id, 1, "export", projectId, env.DB, user.plan);
+        if (!creditCheck.ok) {
+          return json({
+            error: "insufficient_credits",
+            message: "Credit balance depleted. Upgrade to Pro for unlimited exports or purchase credit packs.",
+            balance: creditCheck.balance,
+            required: creditCheck.required,
+            plan: user.plan || "free",
+            upgrade_url: "/#pricing",
+          }, 402);
+        }
+      }
 
       // Fetch screens
       const screensResult = await env.DB.prepare(

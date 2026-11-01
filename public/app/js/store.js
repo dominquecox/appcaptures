@@ -83,6 +83,7 @@ export function createStore(storage){
       const meData = await meRes.json();
       if(!meData.ok || !meData.user) return false;
       state.user = meData.user;
+      if(meData.credits) state.credits = meData.credits;
 
       const projRes = await fetch("/api/projects", { credentials: "same-origin" });
       if(!projRes.ok) return false;

@@ -115,6 +115,7 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
       <option value="duo">iPhone Duo</option>
     </select></div>
     <span class="badge" id="sizeBadge">1320 × 2868 · iOS 6.9"</span>
+    <span class="badge" id="creditsBadge" title="Available Credits" style="border-color:var(--primary);color:#a5b4fc;cursor:pointer;">5 credits</span>
     <button class="btn" id="btnSave">Save</button>
     <button class="btn ghost" id="btnResetAll" title="Clear saved studio state and reload fresh presets">Reset</button>
     <button class="btn primary" id="btnGenerateSet" style="background:#7c5cff;color:#fff;">Generate Set</button>
@@ -236,6 +237,51 @@ button:focus-visible,.select:focus-visible,.select-full:focus-visible,.input:foc
     </div>
     <div class="review-footer" style="margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;">
       <button class="btn" id="reviewCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="paywallModal" hidden class="review-modal">
+  <div class="review-backdrop" id="paywallBackdrop"></div>
+  <div class="review-drawer" role="dialog" aria-modal="true" aria-labelledby="paywallTitle" style="max-width:440px;">
+    <div class="review-header">
+      <div>
+        <h3 id="paywallTitle" style="margin:0;font-size:15px;color:#fff;display:flex;align-items:center;gap:8px;">
+          Unlock Unlimited Exports
+          <span class="pill" style="background:rgba(239,68,68,.2);color:#f87171;">Credits Depleted</span>
+        </h3>
+        <p style="margin:4px 0 0;font-size:11.5px;color:#94a3b8;">Choose a plan to continue generating release-ready assets</p>
+      </div>
+      <button id="paywallClose" class="btn ghost" style="padding:4px 8px;min-height:auto;" aria-label="Close paywall dialog">✕</button>
+    </div>
+    <div class="review-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#111827;border:1px solid var(--primary);border-radius:10px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h4 style="margin:0;font-size:14px;color:#fff;">Lifetime Studio Pass</h4>
+          <span style="font-size:15px;font-weight:700;color:var(--primary);">$19 once</span>
+        </div>
+        <p style="margin:6px 0 10px;font-size:12px;color:#94a3b8;">Watermark-free exports, all store presets, brand kits, 50 AI credits included.</p>
+        <a href="/#pricing" class="btn primary" style="display:block;text-align:center;text-decoration:none;font-size:12px;padding:6px 12px;background:#7c5cff;color:#fff;">Get Lifetime Pass</a>
+      </div>
+      <div style="background:#111827;border:1px solid var(--line);border-radius:10px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h4 style="margin:0;font-size:14px;color:#fff;">Pro Creator</h4>
+          <span style="font-size:15px;font-weight:700;color:#38bdf8;">$9 / mo</span>
+        </div>
+        <p style="margin:6px 0 10px;font-size:12px;color:#94a3b8;">Unlimited exports, 250 AI credits/mo, priority R2 cloud sync, new templates first.</p>
+        <a href="/#pricing" class="btn" style="display:block;text-align:center;text-decoration:none;font-size:12px;padding:6px 12px;">Subscribe Pro</a>
+      </div>
+      <div style="background:#111827;border:1px solid var(--line);border-radius:10px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h4 style="margin:0;font-size:14px;color:#fff;">AI Credit Pack</h4>
+          <span style="font-size:15px;font-weight:700;color:#e2e8f0;">$4.99</span>
+        </div>
+        <p style="margin:6px 0 10px;font-size:12px;color:#94a3b8;">100 AI Listing or Social Post generations. Credits never expire.</p>
+        <a href="/#pricing" class="btn" style="display:block;text-align:center;text-decoration:none;font-size:12px;padding:6px 12px;">Get 100 Credits</a>
+      </div>
+    </div>
+    <div class="review-footer" style="margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;">
+      <button class="btn" id="paywallCloseBtn">Maybe Later</button>
     </div>
   </div>
 </div>

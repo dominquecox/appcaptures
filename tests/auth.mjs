@@ -295,7 +295,7 @@ const post = (url, body, env, headers = {}) => {
   const env = { DB: db };
 
   // Insert expired magic link (10 minutes ago)
-  const expiredRawToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const expiredRawToken = "test-expired-raw-token-1234567890abcdef";
   const enc = new TextEncoder();
   const digest = await crypto.subtle.digest("SHA-256", enc.encode(expiredRawToken));
   const expiredHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -343,6 +343,11 @@ const post = (url, body, env, headers = {}) => {
       name: "Alex Developer",
       plan: "pro",
       status: "active",
+    },
+    credits: {
+      balance: 5,
+      lifetime_granted: 5,
+      lifetime_spent: 0,
     },
   });
 
