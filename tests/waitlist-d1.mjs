@@ -5,11 +5,23 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-const { Miniflare, convertV4MiniflareOptions } = await import(process.env.MINIFLARE_MODULE || 'miniflare');
+let Miniflare, convertV4MiniflareOptions;
+try {
+  const mfModule = await import(process.env.MINIFLARE_MODULE || 'miniflare');
+  Miniflare = mfModule.Miniflare;
+  convertV4MiniflareOptions = mfModule.convertV4MiniflareOptions;
+} catch {
+  const fallbackPath = '/Users/ploonu/code/ACTIVE/vidiloopapi/node_modules/miniflare/dist/src/index.js';
+  const mfModule = await import(fallbackPath);
+  Miniflare = mfModule.Miniflare;
+  convertV4MiniflareOptions = mfModule.convertV4MiniflareOptions;
+}
 const options = {
   modules: true,
+  modulesRules: [{ type: 'ESModule', include: ['**/*.js'] }],
   scriptPath: fileURLToPath(new URL('../worker.js', import.meta.url)),
   compatibilityDate: '2026-10-19',
+  compatibilityFlags: ['nodejs_compat'],
   d1Databases: ['DB'],
   d1Persist: false,
 };

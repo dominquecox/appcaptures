@@ -537,6 +537,10 @@ async function handleGenerateSet(){
           openReviewModal(data);
           return;
         }
+        if(res.status === 402){
+          openPaywallModal();
+          return;
+        }
       }catch(e){
         // fallback to local client simulation
       }
@@ -615,4 +619,48 @@ if(revCloseBtn) revCloseBtn.addEventListener("click", closeReviewModal);
 
 const revBackdrop = document.getElementById("reviewBackdrop");
 if(revBackdrop) revBackdrop.addEventListener("click", closeReviewModal);
+
+// ---- Paywall Modal (AC-012) ----
+const paywallModal = document.getElementById("paywallModal");
+const paywallClose = document.getElementById("paywallClose");
+const paywallCloseBtn = document.getElementById("paywallCloseBtn");
+const paywallBackdrop = document.getElementById("paywallBackdrop");
+const creditsBadge = document.getElementById("creditsBadge");
+
+export function openPaywallModal(){
+  if(!paywallModal) return;
+  paywallModal.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+export function closePaywallModal(){
+  if(!paywallModal) return;
+  paywallModal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+if(paywallClose) paywallClose.addEventListener("click", closePaywallModal);
+if(paywallCloseBtn) paywallCloseBtn.addEventListener("click", closePaywallModal);
+if(paywallBackdrop) paywallBackdrop.addEventListener("click", closePaywallModal);
+if(creditsBadge) creditsBadge.addEventListener("click", openPaywallModal);
+
+function syncCreditsUI(){
+  if(!creditsBadge) return;
+  if(state.credits){
+    const bal = state.credits.balance;
+    creditsBadge.textContent = bal + " credit" + (bal === 1 ? "" : "s");
+    if(bal <= 0){
+      creditsBadge.style.color = "#f87171";
+      creditsBadge.style.borderColor = "rgba(239,68,68,0.4)";
+    } else {
+      creditsBadge.style.color = "#a5b4fc";
+      creditsBadge.style.borderColor = "var(--primary)";
+    }
+  }
+}
+
+if(typeof window !== "undefined"){
+  window.addEventListener("store:synced", syncCreditsUI);
+}
+
 render();
