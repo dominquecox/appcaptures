@@ -61,7 +61,7 @@ async function authenticateSession(req, env) {
   if (!token) return null;
   const tokenHash = await hashToken(token);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.plan, u.status, s.id AS session_id, s.token_hash, s.expires_at
+    `SELECT u.id, u.email, u.name, u.plan, u.status, u.stripe_customer_id, s.id AS session_id, s.token_hash, s.expires_at
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND (u.status IS NULL OR u.status != 'deleted')`
@@ -301,12 +301,22 @@ async function getAIAdapter(env) {
   return _aiAdapter;
 }
 
+let _stripeModule;
+async function getStripeModule(env) {
+  if (env && env.STRIPE_MODULE) return env.STRIPE_MODULE;
+  if (!_stripeModule) {
+    _stripeModule = await import("./engine/stripe.js");
+  }
+  return _stripeModule;
+}
+
 // Rate Limit Tiers (SPEC Section 3.3, AC-006)
 const RATE_LIMIT_TIERS = {
   auth: { limit: 5, periodSeconds: 600 },           // 5 requests per 10 minutes (POST /api/auth/magic-link)
   waitlist: { limit: 10, periodSeconds: 600 },      // 10 requests per 10 minutes (POST /api/waitlist)
   ai: { limit: 20, periodSeconds: 3600 },           // 20 requests per hour (POST /api/listing/generate)
   render_export: { limit: 30, periodSeconds: 60 },  // 30 requests per minute (POST /api/exports)
+  billing: { limit: 20, periodSeconds: 600 },       // 20 requests per 10 minutes (POST /api/stripe/*)
 };
 
 const rateLimitStore = new Map();
@@ -665,6 +675,92 @@ export default {
         200,
         { "Set-Cookie": "appcaptures_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax" }
       );
+    }
+    // --- Stripe Billing & Checkout (AC-013) ---
+    if ((url.pathname === "/api/stripe/checkout" || url.pathname === "/api/billing/checkout") && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "billing", RATE_LIMIT_TIERS.billing, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
+
+      let body = {};
+      try { body = await readJson(req); } catch (e) { return bodyError(e); }
+
+      const { createCheckoutSession } = await getStripeModule(env);
+      try {
+        const session = await createCheckoutSession({
+          env,
+          user,
+          productId: body.product || body.plan || "lifetime",
+          successUrl: body.successUrl,
+          cancelUrl: body.cancelUrl,
+          origin: url.origin,
+        });
+        return json({ ok: true, url: session.url, id: session.id, product: session.product.id });
+      } catch (err) {
+        return json({ error: err.message || "checkout creation failed" }, 400);
+      }
+    }
+    if ((url.pathname === "/api/stripe/portal" || url.pathname === "/api/billing/portal") && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+      const user = await authenticateSession(req, env);
+      if (!user) return json({ error: "unauthorized" }, 401);
+
+      const identifier = await getRequestIdentifier(req, env);
+      const rl = await checkRateLimit(identifier, "billing", RATE_LIMIT_TIERS.billing, env);
+      if (!rl.success) return rateLimitResponse(rl.retryAfter);
+
+      let body = {};
+      try { body = await readJson(req); } catch { body = {}; }
+
+      const { createPortalSession } = await getStripeModule(env);
+      try {
+        const portal = await createPortalSession({
+          env,
+          user,
+          returnUrl: body.returnUrl,
+          origin: url.origin,
+        });
+        return json({ ok: true, url: portal.url });
+      } catch (err) {
+        return json({ error: err.message || "portal session creation failed" }, 400);
+      }
+    }
+    if ((url.pathname === "/api/stripe/products" || url.pathname === "/api/billing/products") && req.method === "GET") {
+      const { STRIPE_PRODUCTS } = await getStripeModule(env);
+      return json({ ok: true, products: Object.values(STRIPE_PRODUCTS) });
+    }
+    if ((url.pathname === "/api/stripe/webhook" || url.pathname === "/stripe/webhook") && req.method === "POST") {
+      if (!env.DB) return json({ error: "no db" }, 503);
+
+      const rawBody = await req.text();
+      const sigHeader = req.headers.get("stripe-signature") || req.headers.get("Stripe-Signature");
+
+      const { verifyStripeSignature, handleStripeWebhook } = await getStripeModule(env);
+
+      if (env.STRIPE_WEBHOOK_SECRET) {
+        const sigCheck = await verifyStripeSignature(rawBody, sigHeader, env.STRIPE_WEBHOOK_SECRET);
+        if (!sigCheck.valid) {
+          return json({ error: "invalid signature", details: sigCheck.error }, 400);
+        }
+      }
+
+      let event;
+      try {
+        event = JSON.parse(rawBody);
+      } catch {
+        return json({ error: "invalid json body" }, 400);
+      }
+
+      try {
+        const result = await handleStripeWebhook({ env, event });
+        return json(result, 200);
+      } catch (err) {
+        return json({ error: err.message || "webhook processing failed" }, 500);
+      }
     }
     // --- Projects & Screens API (AC-007) ---
     if (url.pathname === "/api/projects" && req.method === "GET") {
